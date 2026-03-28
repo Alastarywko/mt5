@@ -87,7 +87,7 @@ input bool             InpPush        = false;          // Push-повідомл
 //═══════════════════════════════════════════════════════════════
 // СТАТИСТИКА
 //═══════════════════════════════════════════════════════════════
-input bool             InpShowStats   = true;           // Панель статистики
+input bool             InpShowStats   = false;          // Панель статистики
 input int              InpStatHours   = 168;            // Період аналізу (годин)
 input int              InpStatTarget  = 100;            // Ціль (пунктів)
 input int              InpStatPct     = 85;             // Перцентиль просадки (%)
