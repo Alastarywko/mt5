@@ -91,6 +91,7 @@ input bool             InpShowStats   = false;          // Панель стат
 input int              InpStatHours   = 168;            // Період аналізу (годин)
 input int              InpStatTarget  = 100;            // Ціль (пунктів)
 input int              InpStatPct     = 85;             // Перцентиль просадки (%)
+input int              InpStreakLen   = 3;              // Мін. довжина серії (streak)
 
 double BuyBuf[], SellBuf[];
 double StrongBuyBuf[], StrongSellBuf[];
@@ -196,6 +197,7 @@ void OnDeinit(const int reason)
    ObjectDelete(0, "MetkaDotUp");
    ObjectDelete(0, "MetkaDotDn");
    ObjectsDeleteAll(0, g_statPfx);
+   ObjectDelete(0, "MtkProb");
    IndicatorRelease(hEmaFast);
    IndicatorRelease(hEmaSlow);
    IndicatorRelease(hATR);
@@ -589,19 +591,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 {
    static bool s_needReset = false;
 
-   if(!InpShowStats)
-   {
-      ObjectsDeleteAll(0, g_statPfx);
-      if(s_needReset)
-      {
-         for(int i = minStart; i <= barLimit; i++)
-            SetArrowColor(i, 0);
-         s_needReset = false;
-         ChartRedraw(0);
-      }
-      return;
-   }
-   s_needReset = true;
+   ObjectDelete(0, "MtkProb");
 
    int sigBars[];
    int sigDirs[];
@@ -629,8 +619,9 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       }
    }
 
-   for(int s = 0; s < sigCount; s++)
-      SetArrowColor(sigBars[s], 0);
+   bool sigHit[];
+   ArrayResize(sigHit, sigCount);
+   double target = InpStatTarget * _Point;
 
    int buyTotal = 0, buyHit = 0, buyMaxDD = 0;
    int sellTotal = 0, sellHit = 0, sellMaxDD = 0;
@@ -649,9 +640,6 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    ArrayInitialize(hourSellTotal, 0);
    ArrayInitialize(hourSellHit, 0);
    ArrayInitialize(hourSellDD, 0);
-   double target = InpStatTarget * _Point;
-   bool sigHit[];
-   ArrayResize(sigHit, sigCount);
    int ddVals[], ddHrs[], ddDirs[], ddSesses[];
    int ddCount = 0;
 
@@ -733,16 +721,118 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       sigHit[s] = hit;
    }
 
+   //--- probability label above last arrow (always visible)
+   if(sigCount > 0)
+   {
+      int lastDir = sigDirs[0];
+
+      bool dirHits[];
+      int  dirHitCnt = 0;
+      for(int s = sigCount - 1; s >= 0; s--)
+      {
+         if(sigDirs[s] == lastDir)
+         {
+            ArrayResize(dirHits, dirHitCnt + 1);
+            dirHits[dirHitCnt] = sigHit[s];
+            dirHitCnt++;
+         }
+      }
+
+      int curStrk = 0;
+      if(dirHitCnt > 1)
+      {
+         for(int i = dirHitCnt - 2; i >= 0; i--)
+         {
+            if(dirHits[i]) curStrk++;
+            else break;
+         }
+      }
+
+      double prob = 0;
+      string probText = "";
+      int afterK_total = 0, afterK_win = 0;
+      if(curStrk == 0)
+      {
+         for(int i = 0; i < dirHitCnt; i++)
+         {
+            afterK_total++;
+            if(dirHits[i]) afterK_win++;
+         }
+         prob = afterK_total > 0 ? 100.0 * afterK_win / afterK_total : 0;
+         probText = StringFormat("%dh P=%.0f%% (%d/%d)", InpStatHours, prob, afterK_win, afterK_total);
+      }
+      else
+      {
+         int stk = 0;
+         for(int i = 0; i < dirHitCnt; i++)
+         {
+            if(stk >= curStrk)
+            {
+               afterK_total++;
+               if(dirHits[i]) afterK_win++;
+            }
+            if(dirHits[i]) stk++;
+            else stk = 0;
+         }
+         if(afterK_total > 0)
+            prob = 100.0 * afterK_win / afterK_total;
+         else
+         {
+            for(int i = 0; i < dirHitCnt; i++)
+            {
+               afterK_total++;
+               if(dirHits[i]) afterK_win++;
+            }
+            prob = afterK_total > 0 ? 100.0 * afterK_win / afterK_total : 0;
+         }
+         probText = StringFormat("%dh W%d→%.0f%% (%d/%d)", InpStatHours, curStrk, prob, afterK_win, afterK_total);
+      }
+
+      int lastBar = sigBars[0];
+      double arrowPrice;
+      if(lastDir == 1)
+         arrowPrice = low[lastBar] - _Point * 400;
+      else
+         arrowPrice = high[lastBar] + _Point * 400;
+
+      ObjectCreate(0, "MtkProb", OBJ_TEXT, 0, time[lastBar], arrowPrice);
+      ObjectSetString(0, "MtkProb",  OBJPROP_TEXT, probText);
+      ObjectSetString(0, "MtkProb",  OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, "MtkProb", OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, "MtkProb", OBJPROP_COLOR,
+         prob >= 70 ? clrGreen : (prob >= 50 ? clrGold : clrRed));
+      ObjectSetInteger(0, "MtkProb", OBJPROP_ANCHOR, ANCHOR_CENTER);
+      ObjectSetInteger(0, "MtkProb", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, "MtkProb", OBJPROP_BACK, false);
+   }
+
+   //--- stats panel (only when enabled)
+   if(!InpShowStats)
+   {
+      ObjectsDeleteAll(0, g_statPfx);
+      if(s_needReset)
+      {
+         for(int i = minStart; i <= barLimit; i++)
+            SetArrowColor(i, 0);
+         s_needReset = false;
+      }
+      ChartRedraw(0);
+      return;
+   }
+   s_needReset = true;
+
+   for(int s = 0; s < sigCount; s++)
+      SetArrowColor(sigBars[s], 0);
    for(int s = 0; s < sigCount; s++)
    {
       if(!sigHit[s])
          SetArrowColor(sigBars[s], 1);
    }
 
-   //--- max consecutive wins per hour
-   int buyMaxStrk[24], sellMaxStrk[24];
-   ArrayInitialize(buyMaxStrk, 0);
-   ArrayInitialize(sellMaxStrk, 0);
+   //--- count streaks >= InpStreakLen per hour (chronological order)
+   int buyStreakCnt[24], sellStreakCnt[24];
+   ArrayInitialize(buyStreakCnt, 0);
+   ArrayInitialize(sellStreakCnt, 0);
    int buyCurStrk[24], sellCurStrk[24];
    ArrayInitialize(buyCurStrk, 0);
    ArrayInitialize(sellCurStrk, 0);
@@ -754,14 +844,31 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       int hr2 = mdt2.hour;
       if(sigDirs[s] == 1)
       {
-         if(sigHit[s]) { buyCurStrk[hr2]++; if(buyCurStrk[hr2] > buyMaxStrk[hr2]) buyMaxStrk[hr2] = buyCurStrk[hr2]; }
-         else buyCurStrk[hr2] = 0;
+         if(sigHit[s])
+            buyCurStrk[hr2]++;
+         else
+         {
+            if(buyCurStrk[hr2] >= InpStreakLen)
+               buyStreakCnt[hr2]++;
+            buyCurStrk[hr2] = 0;
+         }
       }
       else
       {
-         if(sigHit[s]) { sellCurStrk[hr2]++; if(sellCurStrk[hr2] > sellMaxStrk[hr2]) sellMaxStrk[hr2] = sellCurStrk[hr2]; }
-         else sellCurStrk[hr2] = 0;
+         if(sigHit[s])
+            sellCurStrk[hr2]++;
+         else
+         {
+            if(sellCurStrk[hr2] >= InpStreakLen)
+               sellStreakCnt[hr2]++;
+            sellCurStrk[hr2] = 0;
+         }
       }
+   }
+   for(int h = 0; h < 24; h++)
+   {
+      if(buyCurStrk[h] >= InpStreakLen)  buyStreakCnt[h]++;
+      if(sellCurStrk[h] >= InpStreakLen) sellStreakCnt[h]++;
    }
 
    int allTotal = buyTotal + sellTotal;
@@ -827,9 +934,10 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       y += 22;
    }
 
-   //--- TOP streaks (exclude 100% winrate hours)
+   //--- TOP streaks (>= InpStreakLen, exclude 100% winrate hours)
    y += 28;
-   DrawStatLabel(g_statPfx + "TBH", "── TOP BUY STREAKS ──", clrGreen, y);
+   DrawStatLabel(g_statPfx + "TBH",
+      StringFormat("── TOP BUY STREAKS (%d+) ──", InpStreakLen), clrGreen, y);
    y += 16;
    int bUsed[5]; ArrayInitialize(bUsed, -1);
    for(int n = 0; n < 5; n++)
@@ -841,12 +949,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          bool skip = false;
          for(int u = 0; u < n; u++) if(bUsed[u] == h) { skip = true; break; }
          if(skip) continue;
-         if(buyMaxStrk[h] > bestVal) { bestVal = buyMaxStrk[h]; bestHr = h; }
+         if(buyStreakCnt[h] > bestVal) { bestVal = buyStreakCnt[h]; bestHr = h; }
       }
       if(bestHr < 0) break;
       bUsed[n] = bestHr;
       DrawStatLabel(g_statPfx + "TB" + IntegerToString(n),
-         StringFormat("%dh-%dh  %d streak  %d/%d (%.0f%%)", bestHr, (bestHr + 1) % 24,
+         StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestHr, (bestHr + 1) % 24,
             bestVal, hourBuyHit[bestHr], hourBuyTotal[bestHr],
             100.0 * hourBuyHit[bestHr] / hourBuyTotal[bestHr]),
          clrBlack, y);
@@ -854,7 +962,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    }
 
    y += 20;
-   DrawStatLabel(g_statPfx + "TSH", "── TOP SELL STREAKS ──", clrOrangeRed, y);
+   DrawStatLabel(g_statPfx + "TSH",
+      StringFormat("── TOP SELL STREAKS (%d+) ──", InpStreakLen), clrOrangeRed, y);
    y += 16;
    int sUsed[5]; ArrayInitialize(sUsed, -1);
    for(int n = 0; n < 5; n++)
@@ -866,12 +975,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          bool skip = false;
          for(int u = 0; u < n; u++) if(sUsed[u] == h) { skip = true; break; }
          if(skip) continue;
-         if(sellMaxStrk[h] > bestVal) { bestVal = sellMaxStrk[h]; bestHr = h; }
+         if(sellStreakCnt[h] > bestVal) { bestVal = sellStreakCnt[h]; bestHr = h; }
       }
       if(bestHr < 0) break;
       sUsed[n] = bestHr;
       DrawStatLabel(g_statPfx + "TS" + IntegerToString(n),
-         StringFormat("%dh-%dh  %d streak  %d/%d (%.0f%%)", bestHr, (bestHr + 1) % 24,
+         StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestHr, (bestHr + 1) % 24,
             bestVal, hourSellHit[bestHr], hourSellTotal[bestHr],
             100.0 * hourSellHit[bestHr] / hourSellTotal[bestHr]),
          clrBlack, y);
