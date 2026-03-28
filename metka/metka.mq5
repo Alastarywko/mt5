@@ -631,6 +631,9 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    int hourTotal[24], hourHit[24], hourMaxDD[24];
    int hourBuyTotal[24], hourBuyHit[24], hourBuyDD[24];
    int hourSellTotal[24], hourSellHit[24], hourSellDD[24];
+   double hourBuyMFE[24], hourSellMFE[24];
+   double hourBuyMinMFE[24], hourBuyMaxMFE[24];
+   double hourSellMinMFE[24], hourSellMaxMFE[24];
    ArrayInitialize(hourTotal, 0);
    ArrayInitialize(hourHit, 0);
    ArrayInitialize(hourMaxDD, 0);
@@ -640,6 +643,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    ArrayInitialize(hourSellTotal, 0);
    ArrayInitialize(hourSellHit, 0);
    ArrayInitialize(hourSellDD, 0);
+   ArrayInitialize(hourBuyMFE, 0);
+   ArrayInitialize(hourSellMFE, 0);
+   ArrayInitialize(hourBuyMinMFE, 999999);
+   ArrayInitialize(hourBuyMaxMFE, 0);
+   ArrayInitialize(hourSellMinMFE, 999999);
+   ArrayInitialize(hourSellMaxMFE, 0);
    int ddVals[], ddHrs[], ddDirs[], ddSesses[];
    int ddCount = 0;
 
@@ -664,12 +673,18 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          sessTotal[sess]++;
          hourTotal[hr]++;
          hourBuyTotal[hr]++;
+         double maxHi = entry;
          for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
          {
+            if(high[b] > maxHi) maxHi = high[b];
             if(high[b] >= entry + target) { hit = true; hitBar = b; break; }
          }
          if(hit)
          {
+            double buyMfe = (maxHi - entry) / _Point;
+            hourBuyMFE[hr] += buyMfe;
+            if(buyMfe < hourBuyMinMFE[hr]) hourBuyMinMFE[hr] = buyMfe;
+            if(buyMfe > hourBuyMaxMFE[hr]) hourBuyMaxMFE[hr] = buyMfe;
             buyHit++; sessHit[sess]++; hourHit[hr]++; hourBuyHit[hr]++;
             double minLow = entry;
             for(int b = bar + 1; b <= hitBar; b++)
@@ -694,12 +709,18 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          sessTotal[sess]++;
          hourTotal[hr]++;
          hourSellTotal[hr]++;
+         double minLo = entry;
          for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
          {
+            if(low[b] < minLo) minLo = low[b];
             if(low[b] <= entry - target) { hit = true; hitBar = b; break; }
          }
          if(hit)
          {
+            double sellMfe = (entry - minLo) / _Point;
+            hourSellMFE[hr] += sellMfe;
+            if(sellMfe < hourSellMinMFE[hr]) hourSellMinMFE[hr] = sellMfe;
+            if(sellMfe > hourSellMaxMFE[hr]) hourSellMaxMFE[hr] = sellMfe;
             sellHit++; sessHit[sess]++; hourHit[hr]++; hourSellHit[hr]++;
             double maxHigh = entry;
             for(int b = bar + 1; b <= hitBar; b++)
@@ -934,56 +955,58 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       y += 22;
    }
 
-   //--- TOP streaks (>= InpStreakLen, exclude 100% winrate hours)
+   //--- TOP streaks — BUY left, SELL right side by side
+   int stx = 330;
    y += 28;
    DrawStatLabel(g_statPfx + "TBH",
       StringFormat("── TOP BUY STREAKS (%d+) ──", InpStreakLen), clrGreen, y);
+   DrawStatLabel(g_statPfx + "TSH",
+      StringFormat("── TOP SELL STREAKS (%d+) ──", InpStreakLen), clrOrangeRed, y,
+      CORNER_LEFT_UPPER, 10, stx);
    y += 16;
+
    int bUsed[5]; ArrayInitialize(bUsed, -1);
+   int sUsed[5]; ArrayInitialize(sUsed, -1);
    for(int n = 0; n < 5; n++)
    {
-      int bestHr = -1, bestVal = 0;
+      int bestBHr = -1, bestBVal = 0;
       for(int h = 0; h < 24; h++)
       {
          if(hourBuyTotal[h] == 0 || hourBuyHit[h] == hourBuyTotal[h]) continue;
          bool skip = false;
          for(int u = 0; u < n; u++) if(bUsed[u] == h) { skip = true; break; }
          if(skip) continue;
-         if(buyStreakCnt[h] > bestVal) { bestVal = buyStreakCnt[h]; bestHr = h; }
+         if(buyStreakCnt[h] > bestBVal) { bestBVal = buyStreakCnt[h]; bestBHr = h; }
       }
-      if(bestHr < 0) break;
-      bUsed[n] = bestHr;
-      DrawStatLabel(g_statPfx + "TB" + IntegerToString(n),
-         StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestHr, (bestHr + 1) % 24,
-            bestVal, hourBuyHit[bestHr], hourBuyTotal[bestHr],
-            100.0 * hourBuyHit[bestHr] / hourBuyTotal[bestHr]),
-         clrBlack, y);
-      y += 16;
-   }
+      if(bestBHr >= 0)
+      {
+         bUsed[n] = bestBHr;
+         DrawStatLabel(g_statPfx + "TB" + IntegerToString(n),
+            StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestBHr, (bestBHr + 1) % 24,
+               bestBVal, hourBuyHit[bestBHr], hourBuyTotal[bestBHr],
+               100.0 * hourBuyHit[bestBHr] / hourBuyTotal[bestBHr]),
+            clrBlack, y);
+      }
 
-   y += 20;
-   DrawStatLabel(g_statPfx + "TSH",
-      StringFormat("── TOP SELL STREAKS (%d+) ──", InpStreakLen), clrOrangeRed, y);
-   y += 16;
-   int sUsed[5]; ArrayInitialize(sUsed, -1);
-   for(int n = 0; n < 5; n++)
-   {
-      int bestHr = -1, bestVal = 0;
+      int bestSHr = -1, bestSVal = 0;
       for(int h = 0; h < 24; h++)
       {
          if(hourSellTotal[h] == 0 || hourSellHit[h] == hourSellTotal[h]) continue;
          bool skip = false;
          for(int u = 0; u < n; u++) if(sUsed[u] == h) { skip = true; break; }
          if(skip) continue;
-         if(sellStreakCnt[h] > bestVal) { bestVal = sellStreakCnt[h]; bestHr = h; }
+         if(sellStreakCnt[h] > bestSVal) { bestSVal = sellStreakCnt[h]; bestSHr = h; }
       }
-      if(bestHr < 0) break;
-      sUsed[n] = bestHr;
-      DrawStatLabel(g_statPfx + "TS" + IntegerToString(n),
-         StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestHr, (bestHr + 1) % 24,
-            bestVal, hourSellHit[bestHr], hourSellTotal[bestHr],
-            100.0 * hourSellHit[bestHr] / hourSellTotal[bestHr]),
-         clrBlack, y);
+      if(bestSHr >= 0)
+      {
+         sUsed[n] = bestSHr;
+         DrawStatLabel(g_statPfx + "TS" + IntegerToString(n),
+            StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestSHr, (bestSHr + 1) % 24,
+               bestSVal, hourSellHit[bestSHr], hourSellTotal[bestSHr],
+               100.0 * hourSellHit[bestSHr] / hourSellTotal[bestSHr]),
+            clrBlack, y, CORNER_LEFT_UPPER, 10, stx);
+      }
+
       y += 16;
    }
 
@@ -1033,6 +1056,83 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       if(hourSellTotal[r] > 0)
          DrawStatLabel(g_statPfx + "PSH" + IntegerToString(r), sPrS2,
             sProf2 >= 0 ? clrGreen : clrRed, ry, CORNER_RIGHT_UPPER, 8, rxSell);
+
+      ry += 16;
+   }
+
+   //--- TOP hours by move (MFE) sorted by winrate — under hourly stats, right side
+   ry += 20;
+   DrawStatLabel(g_statPfx + "MBH", "── TOP BUY MOVE ──", clrGreen, ry,
+                 CORNER_RIGHT_UPPER, 9, rxBuy);
+   DrawStatLabel(g_statPfx + "MSH", "── TOP SELL MOVE ──", clrOrangeRed, ry,
+                 CORNER_RIGHT_UPPER, 9, rxSell);
+   ry += 16;
+   DrawStatLabel(g_statPfx + "MBD", "hr      win%  avg   min   max  sig", clrGray, ry,
+                 CORNER_RIGHT_UPPER, 7, rxBuy);
+   DrawStatLabel(g_statPfx + "MSD", "hr      win%  avg   min   max  sig", clrGray, ry,
+                 CORNER_RIGHT_UPPER, 7, rxSell);
+   ry += 14;
+
+   int mbUsed[5]; ArrayInitialize(mbUsed, -1);
+   int msUsed[5]; ArrayInitialize(msUsed, -1);
+
+   for(int n = 0; n < 5; n++)
+   {
+      int bestBHr = -1; double bestBWr = -1;
+      for(int h = 0; h < 24; h++)
+      {
+         if(hourBuyTotal[h] < 2) continue;
+         bool skip = false;
+         for(int u = 0; u < n; u++) if(mbUsed[u] == h) { skip = true; break; }
+         if(skip) continue;
+         double wr = 100.0 * hourBuyHit[h] / hourBuyTotal[h];
+         double avgM = hourBuyHit[h] > 0 ? hourBuyMFE[h] / hourBuyHit[h] : 0;
+         double bestAvgM = (bestBHr >= 0 && hourBuyHit[bestBHr] > 0) ? hourBuyMFE[bestBHr] / hourBuyHit[bestBHr] : 0;
+         if(wr > bestBWr || (wr == bestBWr && avgM > bestAvgM))
+         { bestBWr = wr; bestBHr = h; }
+      }
+      if(bestBHr >= 0)
+      {
+         mbUsed[n] = bestBHr;
+         double bMin = hourBuyMinMFE[bestBHr] < 999990 ? hourBuyMinMFE[bestBHr] : 0;
+         double bAvg = hourBuyHit[bestBHr] > 0 ? hourBuyMFE[bestBHr] / hourBuyHit[bestBHr] : 0;
+         DrawStatLabel(g_statPfx + "MB" + IntegerToString(n),
+            StringFormat("%02dh-%02dh  %3.0f%%  %4.0f  %4.0f  %4.0f  %2d",
+               bestBHr, (bestBHr + 1) % 24,
+               100.0 * hourBuyHit[bestBHr] / hourBuyTotal[bestBHr],
+               bAvg,
+               bMin, hourBuyMaxMFE[bestBHr],
+               hourBuyTotal[bestBHr]),
+            clrBlack, ry, CORNER_RIGHT_UPPER, 8, rxBuy);
+      }
+
+      int bestSHr = -1; double bestSWr = -1;
+      for(int h = 0; h < 24; h++)
+      {
+         if(hourSellTotal[h] < 2) continue;
+         bool skip = false;
+         for(int u = 0; u < n; u++) if(msUsed[u] == h) { skip = true; break; }
+         if(skip) continue;
+         double wr = 100.0 * hourSellHit[h] / hourSellTotal[h];
+         double avgM = hourSellHit[h] > 0 ? hourSellMFE[h] / hourSellHit[h] : 0;
+         double bestAvgM = (bestSHr >= 0 && hourSellHit[bestSHr] > 0) ? hourSellMFE[bestSHr] / hourSellHit[bestSHr] : 0;
+         if(wr > bestSWr || (wr == bestSWr && avgM > bestAvgM))
+         { bestSWr = wr; bestSHr = h; }
+      }
+      if(bestSHr >= 0)
+      {
+         msUsed[n] = bestSHr;
+         double sMin = hourSellMinMFE[bestSHr] < 999990 ? hourSellMinMFE[bestSHr] : 0;
+         double sAvg = hourSellHit[bestSHr] > 0 ? hourSellMFE[bestSHr] / hourSellHit[bestSHr] : 0;
+         DrawStatLabel(g_statPfx + "MS" + IntegerToString(n),
+            StringFormat("%02dh-%02dh  %3.0f%%  %4.0f  %4.0f  %4.0f  %2d",
+               bestSHr, (bestSHr + 1) % 24,
+               100.0 * hourSellHit[bestSHr] / hourSellTotal[bestSHr],
+               sAvg,
+               sMin, hourSellMaxMFE[bestSHr],
+               hourSellTotal[bestSHr]),
+            clrBlack, ry, CORNER_RIGHT_UPPER, 8, rxSell);
+      }
 
       ry += 16;
    }
