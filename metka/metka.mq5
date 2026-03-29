@@ -111,6 +111,15 @@ const int DIV_SW        = 3;
 const int MAX_SPREAD    = 70;
 const int RSI_PERIOD    = 14;
 const string g_statPfx  = "MtkSt_";
+const string g_curPfx   = "MtkCur_";
+const string g_pageBtnMain = "MtkPageMain";
+const string g_pageBtnMove = "MtkPageMove";
+const string g_pageBtnDD   = "MtkPageDD";
+const string g_pageBtnOpt  = "MtkPageOpt";
+const string g_toggleBtnName = "MtkToggleBtn";
+int g_statsPage = 1;
+bool g_pageChanged = false;
+bool g_statsOn = false;
 
 //+------------------------------------------------------------------+
 ENUM_TIMEFRAMES AutoHTF(ENUM_TIMEFRAMES tf)
@@ -186,6 +195,8 @@ int OnInit()
    lastAlertTime  = 0;
    lastDotBarTime = 0;
    dotAlerted     = false;
+   g_statsOn      = InpShowStats;
+   g_pageChanged  = true;
    EventSetTimer(1);
    return(INIT_SUCCEEDED);
 }
@@ -197,7 +208,13 @@ void OnDeinit(const int reason)
    ObjectDelete(0, "MetkaDotUp");
    ObjectDelete(0, "MetkaDotDn");
    ObjectsDeleteAll(0, g_statPfx);
+   ObjectsDeleteAll(0, g_curPfx);
    ObjectDelete(0, "MtkProb");
+   ObjectDelete(0, g_pageBtnMain);
+   ObjectDelete(0, g_pageBtnMove);
+   ObjectDelete(0, g_pageBtnDD);
+   ObjectDelete(0, g_pageBtnOpt);
+   ObjectDelete(0, g_toggleBtnName);
    IndicatorRelease(hEmaFast);
    IndicatorRelease(hEmaSlow);
    IndicatorRelease(hATR);
@@ -206,6 +223,38 @@ void OnDeinit(const int reason)
    IndicatorRelease(hADX);
    IndicatorRelease(hBB);
    IndicatorRelease(hRSI);
+}
+
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id, const long &lparam,
+                  const double &dparam, const string &sparam)
+{
+   if(id == CHARTEVENT_OBJECT_CLICK)
+   {
+      int newPage = 0;
+      if(sparam == g_pageBtnMain) newPage = 1;
+      else if(sparam == g_pageBtnMove) newPage = 2;
+      else if(sparam == g_pageBtnDD)   newPage = 3;
+      else if(sparam == g_pageBtnOpt)  newPage = 4;
+      if(newPage > 0 && newPage != g_statsPage)
+      {
+         g_statsPage = newPage;
+         g_pageChanged = true;
+      }
+      ObjectSetInteger(0, g_pageBtnMain, OBJPROP_STATE, false);
+      ObjectSetInteger(0, g_pageBtnMove, OBJPROP_STATE, false);
+      ObjectSetInteger(0, g_pageBtnDD,   OBJPROP_STATE, false);
+      ObjectSetInteger(0, g_pageBtnOpt,  OBJPROP_STATE, false);
+   }
+   if(id == CHARTEVENT_OBJECT_CLICK && sparam == g_toggleBtnName)
+   {
+      g_statsOn = !g_statsOn;
+      ObjectSetString(0, g_toggleBtnName, OBJPROP_TEXT, g_statsOn ? "Disable Stat" : "Enable Stat");
+      ObjectSetInteger(0, g_toggleBtnName, OBJPROP_BGCOLOR, g_statsOn ? clrOrangeRed : clrGreen);
+      ObjectSetInteger(0, g_toggleBtnName, OBJPROP_BORDER_COLOR, g_statsOn ? clrOrangeRed : clrGreen);
+      ObjectSetInteger(0, g_toggleBtnName, OBJPROP_STATE, false);
+      g_pageChanged = true;
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -227,6 +276,29 @@ bool GetHTFTrend(const datetime barTime,
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   if(g_pageChanged)
+   {
+      g_pageChanged = false;
+      int bars = iBars(_Symbol, _Period);
+      int warmup  = MathMax(InpSlowPeriod, InpATRPeriod) + 2;
+      int maxLook = MathMax(MathMax(REV_LOOKBACK, SQZ_LOOKBACK),
+                    MathMax(MathMax(InpSwingBars, InpDivLookback + DIV_SW),
+                    InpVolPeriod));
+      int minStart = maxLook + warmup + 1;
+      if(bars > minStart + 2)
+      {
+         double tmpO[], tmpH[], tmpL[];
+         datetime tmpT[];
+         if(CopyOpen(_Symbol, _Period, 0, bars, tmpO) == bars &&
+            CopyHigh(_Symbol, _Period, 0, bars, tmpH) == bars &&
+            CopyLow(_Symbol, _Period, 0, bars, tmpL)  == bars &&
+            CopyTime(_Symbol, _Period, 0, bars, tmpT)  == bars)
+         {
+            UpdateStatsPanel(bars, bars - 2, minStart, tmpO, tmpH, tmpL, tmpT);
+         }
+      }
+   }
+
    if(InpPreSignalSec <= 0)
       return;
 
@@ -577,6 +649,102 @@ int CalcProfit(int hit, int total, int p85dd)
    return(win * InpStatTarget - lose * p85dd);
 }
 
+double CalcMFEPct(const double &vals[], const int &hrs[], const int &dirs[],
+                  int total, int hrFilter, int dirFilter, double pct)
+{
+   double tmp[];
+   int cnt = 0;
+   for(int i = 0; i < total; i++)
+   {
+      if(hrFilter >= 0 && hrs[i] != hrFilter) continue;
+      if(dirFilter != 0 && dirs[i] != dirFilter) continue;
+      ArrayResize(tmp, cnt + 1);
+      tmp[cnt] = vals[i];
+      cnt++;
+   }
+   if(cnt == 0) return(0);
+   ArraySort(tmp);
+   int idx = (int)MathFloor(cnt * pct / 100.0);
+   if(idx >= cnt) idx = cnt - 1;
+   if(idx < 0) idx = 0;
+   return(tmp[idx]);
+}
+
+int CalcDDPct(const int &allDD[], const int &allHr[], const int &allDir[],
+             int total, int hrFilter, int dirFilter, double pct)
+{
+   int tmp[];
+   int cnt = 0;
+   for(int i = 0; i < total; i++)
+   {
+      if(hrFilter >= 0 && allHr[i] != hrFilter) continue;
+      if(dirFilter != 0 && allDir[i] != dirFilter) continue;
+      ArrayResize(tmp, cnt + 1);
+      tmp[cnt] = allDD[i];
+      cnt++;
+   }
+   if(cnt == 0) return(0);
+   ArraySort(tmp);
+   int idx = (int)MathFloor(cnt * pct / 100.0);
+   if(idx >= cnt) idx = cnt - 1;
+   if(idx < 0) idx = 0;
+   return(tmp[idx]);
+}
+
+void FindOptimalTPSL(const double &mfe[], const int &mae[],
+                     const int &hrs[], const int &dirs[],
+                     int total, int hrFilter, int dirFilter,
+                     int &bestTP, int &bestSL, double &bestE, double &bestWR, int &bestCnt)
+{
+   double flt[];
+   int    alt[];
+   int n = 0;
+   for(int i = 0; i < total; i++)
+   {
+      if(hrFilter >= 0 && hrs[i] != hrFilter) continue;
+      if(dirFilter != 0 && dirs[i] != dirFilter) continue;
+      ArrayResize(flt, n + 1);
+      ArrayResize(alt, n + 1);
+      flt[n] = mfe[i];
+      alt[n] = mae[i];
+      n++;
+   }
+   bestTP = 0; bestSL = 0; bestE = -999999; bestWR = 0; bestCnt = n;
+   if(n < 2) return;
+
+   double maxMfe = 0;
+   int maxMae = 0;
+   for(int i = 0; i < n; i++)
+   {
+      if(flt[i] > maxMfe) maxMfe = flt[i];
+      if(alt[i] > maxMae) maxMae = alt[i];
+   }
+   int step = (int)MathMax(10, MathRound(maxMfe / 40.0));
+   int slMax = (int)MathMin(maxMae, maxMfe * 2);
+
+   for(int tp = step; tp <= (int)maxMfe; tp += step)
+   {
+      for(int sl = step; sl <= slMax; sl += step)
+      {
+         int wins = 0, losses = 0;
+         for(int i = 0; i < n; i++)
+         {
+            if(alt[i] >= sl) losses++;
+            else if(flt[i] >= tp) wins++;
+         }
+         if(wins + losses == 0) continue;
+         double e = ((double)wins * tp - (double)losses * sl) / n;
+         if(e > bestE)
+         {
+            bestE  = e;
+            bestTP = tp;
+            bestSL = sl;
+            bestWR = 100.0 * wins / (wins + losses);
+         }
+      }
+   }
+}
+
 void SetArrowColor(int bar, int clrIdx)
 {
    if(BuyBuf[bar] != EMPTY_VALUE)        BuyClrBuf[bar]        = clrIdx;
@@ -634,6 +802,9 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    double hourBuyMFE[24], hourSellMFE[24];
    double hourBuyMinMFE[24], hourBuyMaxMFE[24];
    double hourSellMinMFE[24], hourSellMaxMFE[24];
+   double hourBuyMFEAll[24], hourSellMFEAll[24];
+   double hourBuyMinAll[24], hourBuyMaxAll[24];
+   double hourSellMinAll[24], hourSellMaxAll[24];
    ArrayInitialize(hourTotal, 0);
    ArrayInitialize(hourHit, 0);
    ArrayInitialize(hourMaxDD, 0);
@@ -649,8 +820,20 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    ArrayInitialize(hourBuyMaxMFE, 0);
    ArrayInitialize(hourSellMinMFE, 999999);
    ArrayInitialize(hourSellMaxMFE, 0);
+   ArrayInitialize(hourBuyMFEAll, 0);
+   ArrayInitialize(hourSellMFEAll, 0);
+   ArrayInitialize(hourBuyMinAll, 999999);
+   ArrayInitialize(hourBuyMaxAll, 0);
+   ArrayInitialize(hourSellMinAll, 999999);
+   ArrayInitialize(hourSellMaxAll, 0);
    int ddVals[], ddHrs[], ddDirs[], ddSesses[];
    int ddCount = 0;
+   double mfeVals[];
+   int mfeHrs[], mfeDirs[];
+   int mfeCount = 0;
+   double optMfe[];
+   int optMae[], optHr[], optDir[];
+   int optCount = 0;
 
    for(int s = 0; s < sigCount; s++)
    {
@@ -674,17 +857,29 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          hourTotal[hr]++;
          hourBuyTotal[hr]++;
          double maxHi = entry;
+         double maxHiAtHit = entry;
          for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
          {
             if(high[b] > maxHi) maxHi = high[b];
-            if(high[b] >= entry + target) { hit = true; hitBar = b; break; }
+            if(!hit && high[b] >= entry + target) { hit = true; hitBar = b; maxHiAtHit = maxHi; }
          }
          if(hit)
          {
-            double buyMfe = (maxHi - entry) / _Point;
-            hourBuyMFE[hr] += buyMfe;
-            if(buyMfe < hourBuyMinMFE[hr]) hourBuyMinMFE[hr] = buyMfe;
-            if(buyMfe > hourBuyMaxMFE[hr]) hourBuyMaxMFE[hr] = buyMfe;
+            double fullBuyMfe = (maxHi - entry) / _Point;
+            hourBuyMFEAll[hr] += fullBuyMfe;
+            if(fullBuyMfe < hourBuyMinAll[hr]) hourBuyMinAll[hr] = fullBuyMfe;
+            if(fullBuyMfe > hourBuyMaxAll[hr]) hourBuyMaxAll[hr] = fullBuyMfe;
+            hourBuyMFE[hr] += fullBuyMfe;
+            ArrayResize(mfeVals, mfeCount + 1);
+            ArrayResize(mfeHrs, mfeCount + 1);
+            ArrayResize(mfeDirs, mfeCount + 1);
+            mfeVals[mfeCount] = fullBuyMfe;
+            mfeHrs[mfeCount] = hr;
+            mfeDirs[mfeCount] = 1;
+            mfeCount++;
+            double buyMfeAtHit = (maxHiAtHit - entry) / _Point;
+            if(buyMfeAtHit < hourBuyMinMFE[hr]) hourBuyMinMFE[hr] = buyMfeAtHit;
+            if(fullBuyMfe > hourBuyMaxMFE[hr]) hourBuyMaxMFE[hr] = fullBuyMfe;
             buyHit++; sessHit[sess]++; hourHit[hr]++; hourBuyHit[hr]++;
             double minLow = entry;
             for(int b = bar + 1; b <= hitBar; b++)
@@ -702,6 +897,20 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
             ddDirs[ddCount] = 1;  ddSesses[ddCount] = sess;
             ddCount++;
          }
+         double buyFullMfe = (maxHi - entry) / _Point;
+         double buyMinLow = entry;
+         for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
+            if(low[b] < buyMinLow) buyMinLow = low[b];
+         int buyFullMae = (int)MathRound((entry - buyMinLow) / _Point);
+         ArrayResize(optMfe, optCount + 1);
+         ArrayResize(optMae, optCount + 1);
+         ArrayResize(optHr, optCount + 1);
+         ArrayResize(optDir, optCount + 1);
+         optMfe[optCount] = buyFullMfe;
+         optMae[optCount] = buyFullMae;
+         optHr[optCount]  = hr;
+         optDir[optCount] = 1;
+         optCount++;
       }
       else
       {
@@ -710,17 +919,29 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          hourTotal[hr]++;
          hourSellTotal[hr]++;
          double minLo = entry;
+         double minLoAtHit = entry;
          for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
          {
             if(low[b] < minLo) minLo = low[b];
-            if(low[b] <= entry - target) { hit = true; hitBar = b; break; }
+            if(!hit && low[b] <= entry - target) { hit = true; hitBar = b; minLoAtHit = minLo; }
          }
          if(hit)
          {
-            double sellMfe = (entry - minLo) / _Point;
-            hourSellMFE[hr] += sellMfe;
-            if(sellMfe < hourSellMinMFE[hr]) hourSellMinMFE[hr] = sellMfe;
-            if(sellMfe > hourSellMaxMFE[hr]) hourSellMaxMFE[hr] = sellMfe;
+            double fullSellMfe = (entry - minLo) / _Point;
+            hourSellMFEAll[hr] += fullSellMfe;
+            if(fullSellMfe < hourSellMinAll[hr]) hourSellMinAll[hr] = fullSellMfe;
+            if(fullSellMfe > hourSellMaxAll[hr]) hourSellMaxAll[hr] = fullSellMfe;
+            hourSellMFE[hr] += fullSellMfe;
+            ArrayResize(mfeVals, mfeCount + 1);
+            ArrayResize(mfeHrs, mfeCount + 1);
+            ArrayResize(mfeDirs, mfeCount + 1);
+            mfeVals[mfeCount] = fullSellMfe;
+            mfeHrs[mfeCount] = hr;
+            mfeDirs[mfeCount] = -1;
+            mfeCount++;
+            double sellMfeAtHit = (entry - minLoAtHit) / _Point;
+            if(sellMfeAtHit < hourSellMinMFE[hr]) hourSellMinMFE[hr] = sellMfeAtHit;
+            if(fullSellMfe > hourSellMaxMFE[hr]) hourSellMaxMFE[hr] = fullSellMfe;
             sellHit++; sessHit[sess]++; hourHit[hr]++; hourSellHit[hr]++;
             double maxHigh = entry;
             for(int b = bar + 1; b <= hitBar; b++)
@@ -738,6 +959,20 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
             ddDirs[ddCount] = -1; ddSesses[ddCount] = sess;
             ddCount++;
          }
+         double sellFullMfe = (entry - minLo) / _Point;
+         double sellMaxHigh = entry;
+         for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
+            if(high[b] > sellMaxHigh) sellMaxHigh = high[b];
+         int sellFullMae = (int)MathRound((sellMaxHigh - entry) / _Point);
+         ArrayResize(optMfe, optCount + 1);
+         ArrayResize(optMae, optCount + 1);
+         ArrayResize(optHr, optCount + 1);
+         ArrayResize(optDir, optCount + 1);
+         optMfe[optCount] = sellFullMfe;
+         optMae[optCount] = sellFullMae;
+         optHr[optCount]  = hr;
+         optDir[optCount] = -1;
+         optCount++;
       }
       sigHit[s] = hit;
    }
@@ -827,10 +1062,31 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, "MtkProb", OBJPROP_BACK, false);
    }
 
+   //--- toggle button (always visible, right side)
+   ObjectDelete(0, g_toggleBtnName);
+   ObjectCreate(0, g_toggleBtnName, OBJ_BUTTON, 0, 0, 0);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_XDISTANCE, 150);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_YDISTANCE, 15);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_XSIZE, 90);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_YSIZE, 22);
+   ObjectSetString(0, g_toggleBtnName, OBJPROP_TEXT, g_statsOn ? "Disable Stat" : "Enable Stat");
+   ObjectSetString(0, g_toggleBtnName, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_BGCOLOR, g_statsOn ? clrOrangeRed : clrGreen);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_BORDER_COLOR, g_statsOn ? clrOrangeRed : clrGreen);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_STATE, false);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_SELECTABLE, false);
+
    //--- stats panel (only when enabled)
-   if(!InpShowStats)
+   if(!g_statsOn)
    {
       ObjectsDeleteAll(0, g_statPfx);
+      ObjectDelete(0, g_pageBtnMain);
+      ObjectDelete(0, g_pageBtnMove);
+      ObjectDelete(0, g_pageBtnDD);
+      ObjectDelete(0, g_pageBtnOpt);
       if(s_needReset)
       {
          for(int i = minStart; i <= barLimit; i++)
@@ -912,9 +1168,58 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    int sellProf = sellTotal > 0 ? CalcProfit(sellHit, sellTotal, sellP70) : 0;
    int allProf  = allTotal  > 0 ? CalcProfit(allHit,  allTotal,  allP70)  : 0;
 
+   //--- очистити старі лейбли перед малюванням поточної сторінки
+   ObjectsDeleteAll(0, g_statPfx);
+
    //--- повний білий фон
    DrawBgPanel(g_statPfx + "BG0", CORNER_LEFT_UPPER, 0, 0, 5000, 5000);
 
+   //--- пересоздати toggle поверх фону
+   ObjectDelete(0, g_toggleBtnName);
+   ObjectCreate(0, g_toggleBtnName, OBJ_BUTTON, 0, 0, 0);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_XDISTANCE, 150);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_YDISTANCE, 15);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_XSIZE, 90);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_YSIZE, 22);
+   ObjectSetString(0, g_toggleBtnName, OBJPROP_TEXT, "Disable Stat");
+   ObjectSetString(0, g_toggleBtnName, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_BGCOLOR, clrOrangeRed);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_BORDER_COLOR, clrOrangeRed);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_STATE, false);
+   ObjectSetInteger(0, g_toggleBtnName, OBJPROP_SELECTABLE, false);
+
+   //--- pagination buttons
+   string pageBtns[] = {g_pageBtnMain, g_pageBtnMove, g_pageBtnDD, g_pageBtnOpt};
+   string pageLbls[] = {"Main", "Move", "Drawdown", "Optimal"};
+   int    pageNums[] = {1, 2, 3, 4};
+   int    btnW[]     = {60, 60, 90, 75};
+   int    btnX       = 165;
+   for(int pb = 0; pb < 4; pb++)
+   {
+      ObjectDelete(0, pageBtns[pb]);
+      ObjectCreate(0, pageBtns[pb], OBJ_BUTTON, 0, 0, 0);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_XDISTANCE, btnX);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_YDISTANCE, 15);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_XSIZE, btnW[pb]);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_YSIZE, 22);
+      ObjectSetString(0, pageBtns[pb], OBJPROP_TEXT, pageLbls[pb]);
+      ObjectSetString(0, pageBtns[pb], OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_FONTSIZE, 9);
+      bool active = (g_statsPage == pageNums[pb]);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_COLOR, active ? clrWhite : clrGray);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_BGCOLOR, active ? clrDodgerBlue : clrWhiteSmoke);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_BORDER_COLOR, clrDodgerBlue);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_STATE, false);
+      ObjectSetInteger(0, pageBtns[pb], OBJPROP_SELECTABLE, false);
+      btnX += btnW[pb] + 4;
+   }
+
+   if(g_statsPage == 1)
+   {
    //--- верхня ліва панель
    int y = 40;
 
@@ -1067,9 +1372,9 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    DrawStatLabel(g_statPfx + "MSH", "── TOP SELL MOVE ──", clrOrangeRed, ry,
                  CORNER_RIGHT_UPPER, 9, rxSell);
    ry += 16;
-   DrawStatLabel(g_statPfx + "MBD", "hr      win%  avg   min   max  sig", clrGray, ry,
+   DrawStatLabel(g_statPfx + "MBD", "hr      win%  avg   min   max", clrGray, ry,
                  CORNER_RIGHT_UPPER, 7, rxBuy);
-   DrawStatLabel(g_statPfx + "MSD", "hr      win%  avg   min   max  sig", clrGray, ry,
+   DrawStatLabel(g_statPfx + "MSD", "hr      win%  avg   min   max", clrGray, ry,
                  CORNER_RIGHT_UPPER, 7, rxSell);
    ry += 14;
 
@@ -1097,12 +1402,11 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          double bMin = hourBuyMinMFE[bestBHr] < 999990 ? hourBuyMinMFE[bestBHr] : 0;
          double bAvg = hourBuyHit[bestBHr] > 0 ? hourBuyMFE[bestBHr] / hourBuyHit[bestBHr] : 0;
          DrawStatLabel(g_statPfx + "MB" + IntegerToString(n),
-            StringFormat("%02dh-%02dh  %3.0f%%  %4.0f  %4.0f  %4.0f  %2d",
+            StringFormat("%02dh-%02dh  %3.0f%%  %4.0f  %4.0f  %4.0f",
                bestBHr, (bestBHr + 1) % 24,
                100.0 * hourBuyHit[bestBHr] / hourBuyTotal[bestBHr],
                bAvg,
-               bMin, hourBuyMaxMFE[bestBHr],
-               hourBuyTotal[bestBHr]),
+               bMin, hourBuyMaxMFE[bestBHr]),
             clrBlack, ry, CORNER_RIGHT_UPPER, 8, rxBuy);
       }
 
@@ -1125,17 +1429,359 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          double sMin = hourSellMinMFE[bestSHr] < 999990 ? hourSellMinMFE[bestSHr] : 0;
          double sAvg = hourSellHit[bestSHr] > 0 ? hourSellMFE[bestSHr] / hourSellHit[bestSHr] : 0;
          DrawStatLabel(g_statPfx + "MS" + IntegerToString(n),
-            StringFormat("%02dh-%02dh  %3.0f%%  %4.0f  %4.0f  %4.0f  %2d",
+            StringFormat("%02dh-%02dh  %3.0f%%  %4.0f  %4.0f  %4.0f",
                bestSHr, (bestSHr + 1) % 24,
                100.0 * hourSellHit[bestSHr] / hourSellTotal[bestSHr],
                sAvg,
-               sMin, hourSellMaxMFE[bestSHr],
-               hourSellTotal[bestSHr]),
+               sMin, hourSellMaxMFE[bestSHr]),
             clrBlack, ry, CORNER_RIGHT_UPPER, 8, rxSell);
       }
 
       ry += 16;
    }
+
+   } // end page 1
+   else if(g_statsPage == 2)
+   {
+   //=== PAGE 2: hourly MFE distribution (percentiles) ===
+   int y2 = 40;
+   DrawStatLabel(g_statPfx + "P2H",
+      StringFormat("MOVE STATS  %d sig / %dh / %d pt target", sigCount, InpStatHours, InpStatTarget), clrBlack, y2);
+   y2 += 18;
+
+   int p2xBuy  = 15;
+   int p2xSell = 15;
+
+   DrawStatLabel(g_statPfx + "P2BH", "────── BUY BY HOUR (MOVE) ──────", clrGreen, y2,
+                 CORNER_LEFT_UPPER, 9, p2xBuy);
+   DrawStatLabel(g_statPfx + "P2SH", "────── SELL BY HOUR (MOVE) ──────", clrOrangeRed, y2,
+                 CORNER_RIGHT_UPPER, 9, p2xSell);
+   y2 += 16;
+   DrawStatLabel(g_statPfx + "P2BD",
+      "hr     w%   min  90%  80%  70%  60%  50%  40%  30%  20%  10%", clrGray, y2, CORNER_LEFT_UPPER, 9, p2xBuy);
+   DrawStatLabel(g_statPfx + "P2SD",
+      "hr     w%   min  90%  80%  70%  60%  50%  40%  30%  20%  10%", clrGray, y2, CORNER_RIGHT_UPPER, 9, p2xSell);
+   y2 += 16;
+
+   for(int r = 0; r < 24; r++)
+   {
+      if(hourBuyHit[r] > 0)
+      {
+         double bMin = hourBuyMinAll[r] < 999990 ? hourBuyMinAll[r] : 0;
+         double bp10 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 10);
+         double bp20 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 20);
+         double bp30 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 30);
+         double bp40 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 40);
+         double bp50 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 50);
+         double bp60 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 60);
+         double bp70 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 70);
+         double bp80 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 80);
+         double bp90 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, 1, 90);
+         DrawStatLabel(g_statPfx + "P2B" + IntegerToString(r),
+            StringFormat("%dh-%dh %3.0f%% %5.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f",
+               r, (r + 1) % 24,
+               100.0 * hourBuyHit[r] / hourBuyTotal[r],
+               bMin, bp10, bp20, bp30, bp40, bp50, bp60, bp70, bp80, bp90),
+            clrBlack, y2, CORNER_LEFT_UPPER, 9, p2xBuy);
+      }
+      else
+      {
+         DrawStatLabel(g_statPfx + "P2B" + IntegerToString(r),
+            StringFormat("%dh-%dh  --    --   --   --   --   --   --   --   --   --   --", r, (r + 1) % 24),
+            clrGray, y2, CORNER_LEFT_UPPER, 9, p2xBuy);
+      }
+
+      if(hourSellHit[r] > 0)
+      {
+         double sMin = hourSellMinAll[r] < 999990 ? hourSellMinAll[r] : 0;
+         double sp10 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 10);
+         double sp20 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 20);
+         double sp30 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 30);
+         double sp40 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 40);
+         double sp50 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 50);
+         double sp60 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 60);
+         double sp70 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 70);
+         double sp80 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 80);
+         double sp90 = CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, r, -1, 90);
+         DrawStatLabel(g_statPfx + "P2S" + IntegerToString(r),
+            StringFormat("%dh-%dh %3.0f%% %5.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f",
+               r, (r + 1) % 24,
+               100.0 * hourSellHit[r] / hourSellTotal[r],
+               sMin, sp10, sp20, sp30, sp40, sp50, sp60, sp70, sp80, sp90),
+            clrBlack, y2, CORNER_RIGHT_UPPER, 9, p2xSell);
+      }
+      else
+      {
+         DrawStatLabel(g_statPfx + "P2S" + IntegerToString(r),
+            StringFormat("%dh-%dh  --    --   --   --   --   --   --   --   --   --   --", r, (r + 1) % 24),
+            clrGray, y2, CORNER_RIGHT_UPPER, 9, p2xSell);
+      }
+
+      y2 += 16;
+   }
+
+   } // end page 2
+   else if(g_statsPage == 3)
+   {
+   //=== PAGE 3: hourly DRAWDOWN distribution (percentiles) ===
+   int y3 = 40;
+   DrawStatLabel(g_statPfx + "P3H",
+      StringFormat("DRAWDOWN STATS  %d sig / %dh / %d pt target", sigCount, InpStatHours, InpStatTarget), clrBlack, y3);
+   y3 += 18;
+
+   int p3xBuy  = 15;
+   int p3xSell = 15;
+
+   DrawStatLabel(g_statPfx + "P3BH", "────── BUY BY HOUR (DD) ──────", clrGreen, y3,
+                 CORNER_LEFT_UPPER, 9, p3xBuy);
+   DrawStatLabel(g_statPfx + "P3SH", "────── SELL BY HOUR (DD) ──────", clrOrangeRed, y3,
+                 CORNER_RIGHT_UPPER, 9, p3xSell);
+   y3 += 16;
+   DrawStatLabel(g_statPfx + "P3BD",
+      "hr     w%   10%  20%  30%  40%  50%  60%  70%  80%  90% 100%", clrGray, y3, CORNER_LEFT_UPPER, 9, p3xBuy);
+   DrawStatLabel(g_statPfx + "P3SD",
+      "hr     w%   10%  20%  30%  40%  50%  60%  70%  80%  90% 100%", clrGray, y3, CORNER_RIGHT_UPPER, 9, p3xSell);
+   y3 += 16;
+
+   for(int r = 0; r < 24; r++)
+   {
+      if(hourBuyHit[r] > 0)
+      {
+         int dp10 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 10);
+         int dp20 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 20);
+         int dp30 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 30);
+         int dp40 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 40);
+         int dp50 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 50);
+         int dp60 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 60);
+         int dp70 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 70);
+         int dp80 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 80);
+         int dp90 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 90);
+         int dp100= CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, 1, 100);
+         DrawStatLabel(g_statPfx + "P3B" + IntegerToString(r),
+            StringFormat("%dh-%dh %3.0f%% %5d %4d %4d %4d %4d %4d %4d %4d %4d %4d",
+               r, (r + 1) % 24,
+               100.0 * hourBuyHit[r] / hourBuyTotal[r],
+               dp10, dp20, dp30, dp40, dp50, dp60, dp70, dp80, dp90, dp100),
+            clrBlack, y3, CORNER_LEFT_UPPER, 9, p3xBuy);
+      }
+      else
+      {
+         DrawStatLabel(g_statPfx + "P3B" + IntegerToString(r),
+            StringFormat("%dh-%dh  --    --   --   --   --   --   --   --   --   --", r, (r + 1) % 24),
+            clrGray, y3, CORNER_LEFT_UPPER, 9, p3xBuy);
+      }
+
+      if(hourSellHit[r] > 0)
+      {
+         int dp10 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 10);
+         int dp20 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 20);
+         int dp30 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 30);
+         int dp40 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 40);
+         int dp50 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 50);
+         int dp60 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 60);
+         int dp70 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 70);
+         int dp80 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 80);
+         int dp90 = CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 90);
+         int dp100= CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, r, -1, 100);
+         DrawStatLabel(g_statPfx + "P3S" + IntegerToString(r),
+            StringFormat("%dh-%dh %3.0f%% %5d %4d %4d %4d %4d %4d %4d %4d %4d %4d",
+               r, (r + 1) % 24,
+               100.0 * hourSellHit[r] / hourSellTotal[r],
+               dp10, dp20, dp30, dp40, dp50, dp60, dp70, dp80, dp90, dp100),
+            clrBlack, y3, CORNER_RIGHT_UPPER, 9, p3xSell);
+      }
+      else
+      {
+         DrawStatLabel(g_statPfx + "P3S" + IntegerToString(r),
+            StringFormat("%dh-%dh  --    --   --   --   --   --   --   --   --   --", r, (r + 1) % 24),
+            clrGray, y3, CORNER_RIGHT_UPPER, 9, p3xSell);
+      }
+
+      y3 += 16;
+   }
+
+   } // end page 3
+   else if(g_statsPage == 4)
+   {
+   //=== PAGE 4: optimal TP/SL per hour ===
+   int y4 = 40;
+   DrawStatLabel(g_statPfx + "P4H",
+      StringFormat("OPTIMAL TP/SL  %d sig / %dh", sigCount, InpStatHours), clrBlack, y4);
+   y4 += 18;
+
+   int p4xBuy  = 15;
+   int p4xSell = 15;
+
+   DrawStatLabel(g_statPfx + "P4BH", "────── BUY OPTIMAL ──────", clrGreen, y4,
+                 CORNER_LEFT_UPPER, 9, p4xBuy);
+   DrawStatLabel(g_statPfx + "P4SH", "────── SELL OPTIMAL ──────", clrOrangeRed, y4,
+                 CORNER_RIGHT_UPPER, 9, p4xSell);
+   y4 += 16;
+   DrawStatLabel(g_statPfx + "P4BD",
+      "hr   signals   TP    SL  profit  w%", clrGray, y4, CORNER_LEFT_UPPER, 9, p4xBuy);
+   DrawStatLabel(g_statPfx + "P4SD",
+      "hr   signals   TP    SL  profit  w%", clrGray, y4, CORNER_RIGHT_UPPER, 9, p4xSell);
+   y4 += 16;
+
+   for(int r = 0; r < 24; r++)
+   {
+      int bTP, bSL, bCnt;
+      double bE, bWR;
+      FindOptimalTPSL(optMfe, optMae, optHr, optDir, optCount, r, 1,
+                      bTP, bSL, bE, bWR, bCnt);
+      if(bCnt > 0 && bTP > 0)
+      {
+         DrawStatLabel(g_statPfx + "P4B" + IntegerToString(r),
+            StringFormat("%dh-%dh %4d %5d %5d %6.0f %4.0f%%",
+               r, (r + 1) % 24, bCnt, bTP, bSL, bE, bWR),
+            clrBlack, y4, CORNER_LEFT_UPPER, 9, p4xBuy);
+      }
+      else
+      {
+         DrawStatLabel(g_statPfx + "P4B" + IntegerToString(r),
+            StringFormat("%dh-%dh %4d    --    --     --   --", r, (r + 1) % 24, bCnt),
+            clrGray, y4, CORNER_LEFT_UPPER, 9, p4xBuy);
+      }
+
+      int sTP, sSL, sCnt;
+      double sE, sWR;
+      FindOptimalTPSL(optMfe, optMae, optHr, optDir, optCount, r, -1,
+                      sTP, sSL, sE, sWR, sCnt);
+      if(sCnt > 0 && sTP > 0)
+      {
+         DrawStatLabel(g_statPfx + "P4S" + IntegerToString(r),
+            StringFormat("%dh-%dh %4d %5d %5d %6.0f %4.0f%%",
+               r, (r + 1) % 24, sCnt, sTP, sSL, sE, sWR),
+            clrBlack, y4, CORNER_RIGHT_UPPER, 9, p4xSell);
+      }
+      else
+      {
+         DrawStatLabel(g_statPfx + "P4S" + IntegerToString(r),
+            StringFormat("%dh-%dh %4d    --    --     --   --", r, (r + 1) % 24, sCnt),
+            clrGray, y4, CORNER_RIGHT_UPPER, 9, p4xSell);
+      }
+
+      y4 += 16;
+   }
+
+   } // end page 4
+
+   //--- bottom-left: current hour Move & DD table (always visible)
+   ObjectsDeleteAll(0, g_curPfx);
+   MqlDateTime nowDt;
+   TimeToStruct(time[rates_total - 1], nowDt);
+   int curHr = nowDt.hour;
+   int yBot = 112;
+   int ln = 14;
+
+   // Winrate
+   double bWR = hourBuyTotal[curHr] > 0 ? 100.0 * hourBuyHit[curHr] / hourBuyTotal[curHr] : 0;
+   double sWR = hourSellTotal[curHr] > 0 ? 100.0 * hourSellHit[curHr] / hourSellTotal[curHr] : 0;
+   DrawStatLabel(g_curPfx + "WR",
+      StringFormat("Winrate %dh:  BUY %.0f%%   SELL %.0f%%", curHr, bWR, sWR),
+      clrDodgerBlue, yBot, CORNER_LEFT_LOWER, 9);
+   yBot -= ln + 2;
+
+   // MOVE header
+   DrawStatLabel(g_curPfx + "MH",
+      "MOVE   90%   80%   70%   60%   50%   40%   30%   20%   10%",
+      clrGray, yBot, CORNER_LEFT_LOWER, 9);
+   yBot -= ln;
+
+   // BUY MOVE
+   if(hourBuyHit[curHr] > 0)
+   {
+      DrawStatLabel(g_curPfx + "MB",
+         StringFormat("BUY  %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f",
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 10),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 20),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 30),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 40),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 50),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 60),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 70),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 80),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 90)),
+         clrGreen, yBot, CORNER_LEFT_LOWER, 9);
+   }
+   else
+      DrawStatLabel(g_curPfx + "MB",
+         "BUY     --    --    --    --    --    --    --    --    --",
+         clrGray, yBot, CORNER_LEFT_LOWER, 9);
+   yBot -= ln;
+
+   // SELL MOVE
+   if(hourSellHit[curHr] > 0)
+   {
+      DrawStatLabel(g_curPfx + "MS",
+         StringFormat("SELL %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f",
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 10),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 20),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 30),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 40),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 50),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 60),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 70),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 80),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 90)),
+         clrOrangeRed, yBot, CORNER_LEFT_LOWER, 9);
+   }
+   else
+      DrawStatLabel(g_curPfx + "MS",
+         "SELL    --    --    --    --    --    --    --    --    --",
+         clrGray, yBot, CORNER_LEFT_LOWER, 9);
+   yBot -= ln + 4;
+
+   // DD header
+   DrawStatLabel(g_curPfx + "DH",
+      "DD     10%   20%   30%   40%   50%   60%   70%   80%   90%  100%",
+      clrGray, yBot, CORNER_LEFT_LOWER, 9);
+   yBot -= ln;
+
+   // BUY DD
+   if(hourBuyHit[curHr] > 0)
+   {
+      DrawStatLabel(g_curPfx + "DB",
+         StringFormat("BUY  %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 10),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 20),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 30),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 40),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 50),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 60),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 70),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 80),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 90),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 100)),
+         clrGreen, yBot, CORNER_LEFT_LOWER, 9);
+   }
+   else
+      DrawStatLabel(g_curPfx + "DB",
+         "BUY     --    --    --    --    --    --    --    --    --    --",
+         clrGray, yBot, CORNER_LEFT_LOWER, 9);
+   yBot -= ln;
+
+   // SELL DD
+   if(hourSellHit[curHr] > 0)
+   {
+      DrawStatLabel(g_curPfx + "DS",
+         StringFormat("SELL %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 10),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 20),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 30),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 40),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 50),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 60),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 70),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 80),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 90),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 100)),
+         clrOrangeRed, yBot, CORNER_LEFT_LOWER, 9);
+   }
+   else
+      DrawStatLabel(g_curPfx + "DS",
+         "SELL    --    --    --    --    --    --    --    --    --    --",
+         clrGray, yBot, CORNER_LEFT_LOWER, 9);
 
    ChartRedraw(0);
 }
@@ -1500,7 +2146,11 @@ int OnCalculate(const int rates_total,
    StrongBuyBuf[rates_total - 1]  = EMPTY_VALUE;
    StrongSellBuf[rates_total - 1] = EMPTY_VALUE;
 
-   UpdateStatsPanel(rates_total, barLimit, minStart, open, high, low, time);
+   if(g_pageChanged)
+   {
+      g_pageChanged = false;
+      UpdateStatsPanel(rates_total, barLimit, minStart, open, high, low, time);
+   }
 
    return(rates_total);
 }
