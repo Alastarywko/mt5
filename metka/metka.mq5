@@ -2034,7 +2034,7 @@ int OnCalculate(const int rates_total,
    else
       start = MathMax(prev_calculated - 2, minStart);
 
-   bool pendingStrongBuy = false, pendingStrongSell = false;
+   bool pendingStrongBuy = false;
 
    for(int i = start; i <= barLimit; i++)
    {
@@ -2048,20 +2048,12 @@ int OnCalculate(const int rates_total,
       StrongSellClrBuf[i] = 0;
 
       double offset2 = _Point * 200;
-      bool skipDetection = false;
       if(pendingStrongBuy)
       {
          StrongBuyBuf[i] = low[i] - offset2;
          pendingStrongBuy = false;
-         skipDetection = true;
+         continue;
       }
-      if(pendingStrongSell)
-      {
-         StrongSellBuf[i] = high[i] + offset2;
-         pendingStrongSell = false;
-         skipDetection = true;
-      }
-      if(skipDetection) continue;
 
       bool buySignal  = false;
       bool sellSignal = false;
@@ -2333,7 +2325,7 @@ int OnCalculate(const int rates_total,
       if(sellSignal && sellCool)
       {
          if(isStrong)
-            pendingStrongSell = true;
+            StrongSellBuf[i] = high[i] + offset;
          else
             SellBuf[i] = high[i] + offset;
       }
