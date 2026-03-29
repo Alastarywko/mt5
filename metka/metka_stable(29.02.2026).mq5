@@ -213,6 +213,7 @@ void OnDeinit(const int reason)
    ObjectDelete(0, "MetkaDotDn");
    ObjectsDeleteAll(0, g_statPfx);
    ObjectsDeleteAll(0, g_curPfx);
+   ObjectDelete(0, "MtkProb");
    ObjectDelete(0, g_pageBtnMain);
    ObjectDelete(0, g_pageBtnMove);
    ObjectDelete(0, g_pageBtnDD);
@@ -813,6 +814,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 {
    static bool s_needReset = false;
 
+   ObjectDelete(0, "MtkProb");
+
    int sigBars[];
    int sigDirs[];
    int sigSess[];
@@ -1029,6 +1032,90 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       sigHit[s] = hit;
    }
 
+   //--- probability label above last arrow (always visible)
+   if(sigCount > 0)
+   {
+      int lastDir = sigDirs[0];
+
+      bool dirHits[];
+      int  dirHitCnt = 0;
+      for(int s = sigCount - 1; s >= 0; s--)
+      {
+         if(sigDirs[s] == lastDir)
+         {
+            ArrayResize(dirHits, dirHitCnt + 1);
+            dirHits[dirHitCnt] = sigHit[s];
+            dirHitCnt++;
+         }
+      }
+
+      int curStrk = 0;
+      if(dirHitCnt > 1)
+      {
+         for(int i = dirHitCnt - 2; i >= 0; i--)
+         {
+            if(dirHits[i]) curStrk++;
+            else break;
+         }
+      }
+
+      double prob = 0;
+      string probText = "";
+      int afterK_total = 0, afterK_win = 0;
+      if(curStrk == 0)
+      {
+         for(int i = 0; i < dirHitCnt; i++)
+         {
+            afterK_total++;
+            if(dirHits[i]) afterK_win++;
+         }
+         prob = afterK_total > 0 ? 100.0 * afterK_win / afterK_total : 0;
+         probText = StringFormat("%dh P=%.0f%% (%d/%d)", InpStatHours, prob, afterK_win, afterK_total);
+      }
+      else
+      {
+         int stk = 0;
+         for(int i = 0; i < dirHitCnt; i++)
+         {
+            if(stk >= curStrk)
+            {
+               afterK_total++;
+               if(dirHits[i]) afterK_win++;
+            }
+            if(dirHits[i]) stk++;
+            else stk = 0;
+         }
+         if(afterK_total > 0)
+            prob = 100.0 * afterK_win / afterK_total;
+         else
+         {
+            for(int i = 0; i < dirHitCnt; i++)
+            {
+               afterK_total++;
+               if(dirHits[i]) afterK_win++;
+            }
+            prob = afterK_total > 0 ? 100.0 * afterK_win / afterK_total : 0;
+         }
+         probText = StringFormat("%dh W%d→%.0f%% (%d/%d)", InpStatHours, curStrk, prob, afterK_win, afterK_total);
+      }
+
+      int lastBar = sigBars[0];
+      double arrowPrice;
+      if(lastDir == 1)
+         arrowPrice = low[lastBar] - _Point * 400;
+      else
+         arrowPrice = high[lastBar] + _Point * 400;
+
+      ObjectCreate(0, "MtkProb", OBJ_TEXT, 0, time[lastBar], arrowPrice);
+      ObjectSetString(0, "MtkProb",  OBJPROP_TEXT, probText);
+      ObjectSetString(0, "MtkProb",  OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, "MtkProb", OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, "MtkProb", OBJPROP_COLOR,
+         prob >= 70 ? clrGreen : (prob >= 50 ? clrGold : clrRed));
+      ObjectSetInteger(0, "MtkProb", OBJPROP_ANCHOR, ANCHOR_CENTER);
+      ObjectSetInteger(0, "MtkProb", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, "MtkProb", OBJPROP_BACK, false);
+   }
 
    //--- toggle button (always visible, right side)
    ObjectDelete(0, g_toggleBtnName);
@@ -2034,8 +2121,6 @@ int OnCalculate(const int rates_total,
    else
       start = MathMax(prev_calculated - 2, minStart);
 
-   bool pendingStrongBuy = false, pendingStrongSell = false;
-
    for(int i = start; i <= barLimit; i++)
    {
       BuyBuf[i]        = EMPTY_VALUE;
@@ -2046,22 +2131,6 @@ int OnCalculate(const int rates_total,
       SellClrBuf[i]       = 0;
       StrongBuyClrBuf[i]  = 0;
       StrongSellClrBuf[i] = 0;
-
-      double offset2 = _Point * 200;
-      bool skipDetection = false;
-      if(pendingStrongBuy)
-      {
-         StrongBuyBuf[i] = low[i] - offset2;
-         pendingStrongBuy = false;
-         skipDetection = true;
-      }
-      if(pendingStrongSell)
-      {
-         StrongSellBuf[i] = high[i] + offset2;
-         pendingStrongSell = false;
-         skipDetection = true;
-      }
-      if(skipDetection) continue;
 
       bool buySignal  = false;
       bool sellSignal = false;
@@ -2325,7 +2394,7 @@ int OnCalculate(const int rates_total,
       if(buySignal && buyCool)
       {
          if(isStrong)
-            pendingStrongBuy = true;
+            StrongBuyBuf[i] = low[i] - offset;
          else
             BuyBuf[i] = low[i] - offset;
       }
@@ -2333,7 +2402,7 @@ int OnCalculate(const int rates_total,
       if(sellSignal && sellCool)
       {
          if(isStrong)
-            pendingStrongSell = true;
+            StrongSellBuf[i] = high[i] + offset;
          else
             SellBuf[i] = high[i] + offset;
       }
@@ -2345,7 +2414,7 @@ int OnCalculate(const int rates_total,
    StrongBuyBuf[rates_total - 1]  = EMPTY_VALUE;
    StrongSellBuf[rates_total - 1] = EMPTY_VALUE;
 
-   //--- recalc stats when a new arrow just formed
+   //--- recalc probability label when a new arrow just formed on the previous bar
    int prevBar = barLimit;
    bool newArrow = (BuyBuf[prevBar] != EMPTY_VALUE || SellBuf[prevBar] != EMPTY_VALUE ||
                     StrongBuyBuf[prevBar] != EMPTY_VALUE || StrongSellBuf[prevBar] != EMPTY_VALUE);
