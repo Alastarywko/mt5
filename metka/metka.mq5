@@ -116,6 +116,7 @@ const string g_pageBtnMain = "MtkPageMain";
 const string g_pageBtnMove = "MtkPageMove";
 const string g_pageBtnDD   = "MtkPageDD";
 const string g_pageBtnOpt  = "MtkPageOpt";
+const string g_pageBtnLoss = "MtkPageLoss";
 const string g_toggleBtnName = "MtkToggleBtn";
 int g_statsPage = 1;
 bool g_pageChanged = false;
@@ -214,6 +215,7 @@ void OnDeinit(const int reason)
    ObjectDelete(0, g_pageBtnMove);
    ObjectDelete(0, g_pageBtnDD);
    ObjectDelete(0, g_pageBtnOpt);
+   ObjectDelete(0, g_pageBtnLoss);
    ObjectDelete(0, g_toggleBtnName);
    IndicatorRelease(hEmaFast);
    IndicatorRelease(hEmaSlow);
@@ -236,6 +238,7 @@ void OnChartEvent(const int id, const long &lparam,
       else if(sparam == g_pageBtnMove) newPage = 2;
       else if(sparam == g_pageBtnDD)   newPage = 3;
       else if(sparam == g_pageBtnOpt)  newPage = 4;
+      else if(sparam == g_pageBtnLoss) newPage = 5;
       if(newPage > 0 && newPage != g_statsPage)
       {
          g_statsPage = newPage;
@@ -245,6 +248,7 @@ void OnChartEvent(const int id, const long &lparam,
       ObjectSetInteger(0, g_pageBtnMove, OBJPROP_STATE, false);
       ObjectSetInteger(0, g_pageBtnDD,   OBJPROP_STATE, false);
       ObjectSetInteger(0, g_pageBtnOpt,  OBJPROP_STATE, false);
+      ObjectSetInteger(0, g_pageBtnLoss, OBJPROP_STATE, false);
    }
    if(id == CHARTEVENT_OBJECT_CLICK && sparam == g_toggleBtnName)
    {
@@ -556,6 +560,32 @@ void OnTimer()
 
    if(!dotAlerted && barStart != lastDotBarTime)
    {
+      // check if previous signal is a loss
+      int prevSigBar = -1;
+      bool prevIsBuy = false;
+      int totalBars = ArraySize(BuyBuf);
+      for(int b = totalBars - 2; b >= 0; b--)
+      {
+         if(BuyBuf[b] != EMPTY_VALUE || StrongBuyBuf[b] != EMPTY_VALUE)
+         { prevSigBar = b; prevIsBuy = true; break; }
+         if(SellBuf[b] != EMPTY_VALUE || StrongSellBuf[b] != EMPTY_VALUE)
+         { prevSigBar = b; prevIsBuy = false; break; }
+      }
+
+      if(prevSigBar >= 0 && prevSigBar + 1 < bars)
+      {
+         double entry = o[prevSigBar + 1];
+         double target = InpStatTarget * _Point;
+         bool hit = false;
+         for(int b = prevSigBar + 1; b < bars; b++)
+         {
+            if(prevIsBuy && h[b] >= entry + target)  { hit = true; break; }
+            if(!prevIsBuy && l[b] <= entry - target) { hit = true; break; }
+         }
+         if(!hit)
+            SetArrowColor(prevSigBar, 1);
+      }
+
       string dir = preBuy ? "BUY" : "SELL";
       string text = StringFormat("Metka PRE-%s | %s %s | %d сек",
                                   dir, _Symbol, EnumToString(_Period), remain);
@@ -1087,6 +1117,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectDelete(0, g_pageBtnMove);
       ObjectDelete(0, g_pageBtnDD);
       ObjectDelete(0, g_pageBtnOpt);
+      ObjectDelete(0, g_pageBtnLoss);
    }
 
    s_needReset = true;
@@ -1191,12 +1222,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    ObjectSetInteger(0, g_toggleBtnName, OBJPROP_SELECTABLE, false);
 
    //--- pagination buttons
-   string pageBtns[] = {g_pageBtnMain, g_pageBtnMove, g_pageBtnDD, g_pageBtnOpt};
-   string pageLbls[] = {"Main", "Move", "Drawdown", "Optimal"};
-   int    pageNums[] = {1, 2, 3, 4};
-   int    btnW[]     = {60, 60, 90, 75};
+   string pageBtns[] = {g_pageBtnMain, g_pageBtnMove, g_pageBtnDD, g_pageBtnOpt, g_pageBtnLoss};
+   string pageLbls[] = {"Main", "Move", "Drawdown", "Optimal", "Loss"};
+   int    pageNums[] = {1, 2, 3, 4, 5};
+   int    btnW[]     = {60, 60, 90, 75, 55};
    int    btnX       = 165;
-   for(int pb = 0; pb < 4; pb++)
+   for(int pb = 0; pb < 5; pb++)
    {
       ObjectDelete(0, pageBtns[pb]);
       ObjectCreate(0, pageBtns[pb], OBJ_BUTTON, 0, 0, 0);
@@ -1665,6 +1696,191 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    }
 
    } // end page 4
+   else if(g_statsPage == 5)
+   {
+   //=== PAGE 5: LOSS analysis ===
+   int y5 = 40;
+   DrawStatLabel(g_statPfx + "P5H",
+      StringFormat("LOSS ANALYSIS  %d sig / %dh", sigCount, InpStatHours), clrBlack, y5);
+   y5 += 22;
+
+   // --- Table 1: consecutive loss streaks ---
+   int lossStreakCnt[8]; // [1..7+] -> index 0=unused, 1..7
+   ArrayInitialize(lossStreakCnt, 0);
+   int curLossStreak = 0;
+   int maxLossStreak = 0;
+
+   // --- Table 2: consecutive win streaks between losses ---
+   int curWinStreak = 0;
+   int minWinStreak = 999999;
+   int maxWinStreak = 0;
+   int winStreakCount = 0;
+   int winStreakCnt[31];
+   ArrayInitialize(winStreakCnt, 0);
+
+   // --- Loss streak hours: lossStreakHrs[streakLen][hour] = count ---
+   int lossStreakHrs[8][24];
+   ArrayInitialize(lossStreakHrs, 0);
+   int curLossHrs[24];
+   ArrayInitialize(curLossHrs, 0);
+
+   // --- Losses per hour ---
+   int lossPerHour[24];
+   ArrayInitialize(lossPerHour, 0);
+   int totalLosses = 0;
+
+   for(int s = 0; s < sigCount; s++)
+   {
+      MqlDateTime mdt5;
+      TimeToStruct(time[sigBars[s]], mdt5);
+      int hr5 = mdt5.hour;
+
+      if(!sigHit[s])
+      {
+         lossPerHour[hr5]++;
+         totalLosses++;
+         if(curWinStreak > 0)
+         {
+            if(curWinStreak < minWinStreak) minWinStreak = curWinStreak;
+            if(curWinStreak > maxWinStreak) maxWinStreak = curWinStreak;
+            if(curWinStreak < 31) winStreakCnt[curWinStreak]++;
+            winStreakCount++;
+            curWinStreak = 0;
+         }
+         curLossStreak++;
+         curLossHrs[hr5]++;
+         if(curLossStreak > maxLossStreak) maxLossStreak = curLossStreak;
+      }
+      else
+      {
+         if(curLossStreak > 0)
+         {
+            int idx = curLossStreak <= 7 ? curLossStreak : 7;
+            lossStreakCnt[idx]++;
+            for(int h = 0; h < 24; h++)
+            {
+               lossStreakHrs[idx][h] += curLossHrs[h];
+               curLossHrs[h] = 0;
+            }
+            curLossStreak = 0;
+         }
+         curWinStreak++;
+      }
+   }
+   if(curLossStreak > 0)
+   {
+      int idx = curLossStreak <= 7 ? curLossStreak : 7;
+      lossStreakCnt[idx]++;
+      for(int h = 0; h < 24; h++)
+         lossStreakHrs[idx][h] += curLossHrs[h];
+   }
+   if(curWinStreak > 0)
+   {
+      if(curWinStreak < minWinStreak) minWinStreak = curWinStreak;
+      if(curWinStreak > maxWinStreak) maxWinStreak = curWinStreak;
+      if(curWinStreak < 31) winStreakCnt[curWinStreak]++;
+      winStreakCount++;
+   }
+   if(minWinStreak == 999999) minWinStreak = 0;
+
+   int p5xL = 15;
+   int p5xH = 365;
+   int p5xW = 15;
+   int yL = y5;
+   int yH = y5;
+   int yW = y5;
+
+   // Left: CONSECUTIVE LOSSES
+   DrawStatLabel(g_statPfx + "P5L", "──── CONSECUTIVE LOSSES ────", clrRed, yL,
+                 CORNER_LEFT_UPPER, 9, p5xL);
+   // Middle: LOSSES BY HOUR
+   DrawStatLabel(g_statPfx + "P5HH", "──── LOSSES BY HOUR ────", clrRed, yH,
+                 CORNER_LEFT_UPPER, 9, p5xH);
+   // Right: CONSECUTIVE WINS
+   DrawStatLabel(g_statPfx + "P5W", "──── CONSECUTIVE WINS ────", clrGreen, yW,
+                 CORNER_RIGHT_UPPER, 9, p5xW);
+   yL += 16; yH += 16; yW += 16;
+
+   DrawStatLabel(g_statPfx + "P5LH", "streak    count", clrGray, yL, CORNER_LEFT_UPPER, 9, p5xL);
+   DrawStatLabel(g_statPfx + "P5HD", "hour        count     %", clrGray, yH,
+                 CORNER_LEFT_UPPER, 9, p5xH);
+   DrawStatLabel(g_statPfx + "P5WH", "streak    count", clrGray, yW, CORNER_RIGHT_UPPER, 9, p5xW);
+   yL += 14; yH += 14; yW += 14;
+
+   for(int k = 1; k <= 7; k++)
+   {
+      string lbl = k < 7 ? StringFormat("  %d", k) : " 7+";
+      DrawStatLabel(g_statPfx + "P5L" + IntegerToString(k),
+         StringFormat("%s        %d", lbl, lossStreakCnt[k]),
+         clrBlack, yL, CORNER_LEFT_UPPER, 9, p5xL);
+      yL += 14;
+   }
+   DrawStatLabel(g_statPfx + "P5LM",
+      StringFormat("max streak: %d", maxLossStreak),
+      clrRed, yL, CORNER_LEFT_UPPER, 9, p5xL);
+   yL += 22;
+
+   // Loss streak distribution by hour (columns = streak 2..7, rows = hours)
+   DrawStatLabel(g_statPfx + "P5DH", "──── LOSS STREAK BY HOUR ────", clrRed, yL,
+                 CORNER_LEFT_UPPER, 9, p5xL);
+   yL += 16;
+
+   // header row: streak numbers
+   string dHdr = "      2   3   4   5   6  7+";
+   DrawStatLabel(g_statPfx + "P5DHH", dHdr, clrGray, yL, CORNER_LEFT_UPPER, 9, p5xL);
+   yL += 14;
+
+   for(int h = 0; h < 24; h++)
+   {
+      bool hasData = false;
+      for(int k = 2; k <= 7; k++)
+         if(lossStreakHrs[k][h] > 0) hasData = true;
+      if(!hasData) continue;
+
+      DrawStatLabel(g_statPfx + "P5DL" + IntegerToString(h),
+         StringFormat("%2dh  %3d %3d %3d %3d %3d %3d",
+            h,
+            lossStreakHrs[2][h], lossStreakHrs[3][h], lossStreakHrs[4][h],
+            lossStreakHrs[5][h], lossStreakHrs[6][h], lossStreakHrs[7][h]),
+         clrBlack, yL, CORNER_LEFT_UPPER, 9, p5xL);
+      yL += 14;
+   }
+
+   // Middle: LOSSES BY HOUR data
+   for(int r = 0; r < 24; r++)
+   {
+      int hrTotal = hourBuyTotal[r] + hourSellTotal[r];
+      if(hrTotal > 0)
+      {
+         double pct = 100.0 * lossPerHour[r] / hrTotal;
+         DrawStatLabel(g_statPfx + "P5HR" + IntegerToString(r),
+            StringFormat("%dh-%dh :   %3d  | %4.0f%%", r, (r + 1) % 24, lossPerHour[r], pct),
+            clrBlack, yH, CORNER_LEFT_UPPER, 9, p5xH);
+      }
+      else
+      {
+         DrawStatLabel(g_statPfx + "P5HR" + IntegerToString(r),
+            StringFormat("%dh-%dh :     0  |   0%%", r, (r + 1) % 24),
+            clrGray, yH, CORNER_LEFT_UPPER, 9, p5xH);
+      }
+      yH += 14;
+   }
+
+   // Right: CONSECUTIVE WINS data
+   int maxWS = maxWinStreak < 30 ? maxWinStreak : 30;
+   for(int k = 1; k <= maxWS; k++)
+   {
+      DrawStatLabel(g_statPfx + "P5W" + IntegerToString(k),
+         StringFormat(" %2d        %d", k, winStreakCnt[k]),
+         clrBlack, yW, CORNER_RIGHT_UPPER, 9, p5xW);
+      yW += 14;
+   }
+   yW += 4;
+   DrawStatLabel(g_statPfx + "P5WS",
+      StringFormat("min: %d   max: %d   total: %d", minWinStreak, maxWinStreak, winStreakCount),
+      clrGreen, yW, CORNER_RIGHT_UPPER, 9, p5xW);
+
+   } // end page 5
 
    } // end if(g_statsOn)
 
@@ -1676,11 +1892,14 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    int yBot = 112;
    int ln = 14;
 
-   // Winrate
+   // Winrate + Losses
    double bWR = hourBuyTotal[curHr] > 0 ? 100.0 * hourBuyHit[curHr] / hourBuyTotal[curHr] : 0;
    double sWR = hourSellTotal[curHr] > 0 ? 100.0 * hourSellHit[curHr] / hourSellTotal[curHr] : 0;
+   int totalHr = hourBuyTotal[curHr] + hourSellTotal[curHr];
+   int lossHr = totalHr - hourBuyHit[curHr] - hourSellHit[curHr];
+   double lossPct = totalHr > 0 ? 100.0 * lossHr / totalHr : 0;
    DrawStatLabel(g_curPfx + "WR",
-      StringFormat("Winrate %dh:  BUY %.0f%%   SELL %.0f%%", curHr, bWR, sWR),
+      StringFormat("Winrate %dh:  BUY %.0f%%   SELL %.0f%%   LOSSES: %.0f%%", curHr, bWR, sWR, lossPct),
       clrDodgerBlue, yBot, CORNER_LEFT_LOWER, 9);
    yBot -= ln + 2;
 
