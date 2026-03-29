@@ -104,6 +104,7 @@ ENUM_TIMEFRAMES htfPeriod;
 datetime lastAlertTime;
 datetime lastDotBarTime;
 bool     dotAlerted;
+int      g_lastHour = -1;
 
 const int REV_LOOKBACK  = 5;
 const int SQZ_LOOKBACK  = 6;
@@ -280,6 +281,13 @@ bool GetHTFTrend(const datetime barTime,
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   // auto-recalc on hour change
+   MqlDateTime nowDt;
+   TimeToStruct(TimeCurrent(), nowDt);
+   if(g_lastHour >= 0 && nowDt.hour != g_lastHour)
+      g_pageChanged = true;
+   g_lastHour = nowDt.hour;
+
    if(g_pageChanged)
    {
       g_pageChanged = false;
