@@ -1316,9 +1316,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       {
          bUsed[n] = bestBHr;
          DrawStatLabel(g_statPfx + "TB" + IntegerToString(n),
-            StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestBHr, (bestBHr + 1) % 24,
-               bestBVal, hourBuyHit[bestBHr], hourBuyTotal[bestBHr],
-               100.0 * hourBuyHit[bestBHr] / hourBuyTotal[bestBHr]),
+            StringFormat("%dh-%dh  %dx  %d/%d", bestBHr, (bestBHr + 1) % 24,
+               bestBVal, hourBuyHit[bestBHr], hourBuyTotal[bestBHr]),
             clrBlack, y);
       }
 
@@ -1335,9 +1334,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       {
          sUsed[n] = bestSHr;
          DrawStatLabel(g_statPfx + "TS" + IntegerToString(n),
-            StringFormat("%dh-%dh  %dx  %d/%d (%.0f%%)", bestSHr, (bestSHr + 1) % 24,
-               bestSVal, hourSellHit[bestSHr], hourSellTotal[bestSHr],
-               100.0 * hourSellHit[bestSHr] / hourSellTotal[bestSHr]),
+            StringFormat("%dh-%dh  %dx  %d/%d", bestSHr, (bestSHr + 1) % 24,
+               bestSVal, hourSellHit[bestSHr], hourSellTotal[bestSHr]),
             clrBlack, y, CORNER_LEFT_UPPER, 10, stx);
       }
 
@@ -1724,9 +1722,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    int curLossHrs[24];
    ArrayInitialize(curLossHrs, 0);
 
-   // --- Losses per hour ---
+   // --- Losses per hour (split by direction) ---
    int lossPerHour[24];
+   int lossBuyHour[24], lossSellHour[24];
    ArrayInitialize(lossPerHour, 0);
+   ArrayInitialize(lossBuyHour, 0);
+   ArrayInitialize(lossSellHour, 0);
    int totalLosses = 0;
 
    for(int s = 0; s < sigCount; s++)
@@ -1738,6 +1739,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       if(!sigHit[s])
       {
          lossPerHour[hr5]++;
+         if(sigDirs[s] == 1) lossBuyHour[hr5]++;
+         else lossSellHour[hr5]++;
          totalLosses++;
          if(curWinStreak > 0)
          {
@@ -1794,7 +1797,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    DrawStatLabel(g_statPfx + "P5L", "──── CONSECUTIVE LOSSES ────", clrRed, yL,
                  CORNER_LEFT_UPPER, 9, p5xL);
    // Middle: LOSSES BY HOUR
-   DrawStatLabel(g_statPfx + "P5HH", "──── LOSSES BY HOUR ────", clrRed, yH,
+   DrawStatLabel(g_statPfx + "P5HH", "──── LOSSES BY HOUR BUY ────", clrGreen, yH,
                  CORNER_LEFT_UPPER, 9, p5xH);
    // Right: CONSECUTIVE WINS
    DrawStatLabel(g_statPfx + "P5W", "──── CONSECUTIVE WINS ────", clrGreen, yW,
@@ -1846,24 +1849,45 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       yL += 14;
    }
 
-   // Middle: LOSSES BY HOUR data
+   // Middle: LOSSES BY HOUR BUY
+   int p5xHS = p5xH + 310;
+   int yHS = y5;
+   DrawStatLabel(g_statPfx + "P5HHS", "──── LOSSES BY HOUR SELL ────", clrOrangeRed, yHS,
+                 CORNER_LEFT_UPPER, 9, p5xHS);
+   yHS += 16;
+   DrawStatLabel(g_statPfx + "P5HDS", "hour       count     %", clrGray, yHS,
+                 CORNER_LEFT_UPPER, 9, p5xHS);
+   yHS += 14;
+
    for(int r = 0; r < 24; r++)
    {
-      int hrTotal = hourBuyTotal[r] + hourSellTotal[r];
-      if(hrTotal > 0)
+      // BUY losses
+      if(hourBuyTotal[r] > 0)
       {
-         double pct = 100.0 * lossPerHour[r] / hrTotal;
-         DrawStatLabel(g_statPfx + "P5HR" + IntegerToString(r),
-            StringFormat("%dh-%dh :   %3d  | %4.0f%%", r, (r + 1) % 24, lossPerHour[r], pct),
+         double bPct = 100.0 * lossBuyHour[r] / hourBuyTotal[r];
+         DrawStatLabel(g_statPfx + "P5HB" + IntegerToString(r),
+            StringFormat("%dh-%dh :   %3d  | %4.0f%%", r, (r + 1) % 24, lossBuyHour[r], bPct),
             clrBlack, yH, CORNER_LEFT_UPPER, 9, p5xH);
       }
       else
-      {
-         DrawStatLabel(g_statPfx + "P5HR" + IntegerToString(r),
+         DrawStatLabel(g_statPfx + "P5HB" + IntegerToString(r),
             StringFormat("%dh-%dh :     0  |   0%%", r, (r + 1) % 24),
             clrGray, yH, CORNER_LEFT_UPPER, 9, p5xH);
-      }
       yH += 14;
+
+      // SELL losses
+      if(hourSellTotal[r] > 0)
+      {
+         double sPct = 100.0 * lossSellHour[r] / hourSellTotal[r];
+         DrawStatLabel(g_statPfx + "P5HS" + IntegerToString(r),
+            StringFormat("%dh-%dh :   %3d  | %4.0f%%", r, (r + 1) % 24, lossSellHour[r], sPct),
+            clrBlack, yHS, CORNER_LEFT_UPPER, 9, p5xHS);
+      }
+      else
+         DrawStatLabel(g_statPfx + "P5HS" + IntegerToString(r),
+            StringFormat("%dh-%dh :     0  |   0%%", r, (r + 1) % 24),
+            clrGray, yHS, CORNER_LEFT_UPPER, 9, p5xHS);
+      yHS += 14;
    }
 
    // Right: CONSECUTIVE WINS data
