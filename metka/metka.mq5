@@ -2397,6 +2397,13 @@ int OnCalculate(const int rates_total,
    StrongBuyBuf[rates_total - 1]  = EMPTY_VALUE;
    StrongSellBuf[rates_total - 1] = EMPTY_VALUE;
 
+   //--- recalc probability label when a new arrow just formed on the previous bar
+   int prevBar = barLimit;
+   bool newArrow = (BuyBuf[prevBar] != EMPTY_VALUE || SellBuf[prevBar] != EMPTY_VALUE ||
+                    StrongBuyBuf[prevBar] != EMPTY_VALUE || StrongSellBuf[prevBar] != EMPTY_VALUE);
+   if(newArrow && prev_calculated > 0 && prev_calculated < rates_total)
+      g_pageChanged = true;
+
    if(g_pageChanged)
    {
       g_pageChanged = false;
