@@ -1149,7 +1149,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    for(int s = 0; s < sigCount; s++)
       SetArrowColor(sigBars[s], 0);
-   for(int s = 0; s < sigCount; s++)
+   for(int s = 1; s < sigCount; s++)
    {
       if(!sigHit[s])
          SetArrowColor(sigBars[s], 1);
