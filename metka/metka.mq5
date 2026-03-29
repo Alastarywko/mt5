@@ -1230,13 +1230,13 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       StringFormat("                        [100%%] {%d%%}", InpStatPct), clrGray, y, CORNER_LEFT_UPPER, 7);
    y += 18;
    DrawStatLabel(g_statPfx + "B",
-      StringFormat("BUY   %d/%d (%.1f%%) %s ^%d^", buyHit, buyTotal, buyPct, buyDD, buyProf), clrGreen, y);
+      StringFormat("BUY   %d/%d (%.1f%%) %s", buyHit, buyTotal, buyPct, buyDD), clrGreen, y);
    y += 20;
    DrawStatLabel(g_statPfx + "S",
-      StringFormat("SELL  %d/%d (%.1f%%) %s ^%d^", sellHit, sellTotal, sellPct, sellDD, sellProf), clrOrangeRed, y);
+      StringFormat("SELL  %d/%d (%.1f%%) %s", sellHit, sellTotal, sellPct, sellDD), clrOrangeRed, y);
    y += 20;
    DrawStatLabel(g_statPfx + "A",
-      StringFormat("ALL   %d/%d (%.1f%%) %s ^%d^", allHit, allTotal, allPct, allDD, allProf), clrBlack, y);
+      StringFormat("ALL   %d/%d (%.1f%%) %s", allHit, allTotal, allPct, allDD), clrBlack, y);
    y += 36;
 
    DrawStatLabel(g_statPfx + "SSH", "── SESSIONS ──", clrBlack, y);
@@ -1253,9 +1253,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       double pct = sessTotal[k] > 0 ? 100.0 * sessHit[k] / sessTotal[k] : 0;
       int sp85 = CalcP85(ddVals, ddHrs, ddDirs, ddSesses, ddCount, -1, 0, k);
       string sdd = sessHit[k] > 0 ? StringFormat("[%d] {%d}", sessMaxDD[k], sp85) : "[--]";
-      int sProf = sessTotal[k] > 0 ? CalcProfit(sessHit[k], sessTotal[k], sp85) : 0;
       DrawStatLabel(g_statPfx + sessIds[k],
-         StringFormat("%s %d/%d (%.0f%%) %s ^%d^", sessNames[k], sessHit[k], sessTotal[k], pct, sdd, sProf),
+         StringFormat("%s %d/%d (%.0f%%) %s", sessNames[k], sessHit[k], sessTotal[k], pct, sdd),
          clrBlack, y);
       y += 22;
    }
@@ -1317,7 +1316,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    //--- правая сторона: BUY и SELL по часам рядом
    int ry = 40;
-   int rxBuy  = 420;
+   int rxBuy  = 450;
    int rxSell = 15;
 
    DrawStatLabel(g_statPfx + "BHH", "──── BUY BY HOUR ────", clrGreen, ry,
@@ -1325,7 +1324,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    DrawStatLabel(g_statPfx + "SHH", "──── SELL BY HOUR ────", clrOrangeRed, ry,
                  CORNER_RIGHT_UPPER, 8, rxSell);
    ry += 16;
-   string hdrDD2 = StringFormat("                         [100%%] {%d%%}", InpStatPct);
+   string hdrDD2 = StringFormat("hr       hit/tot  win%%  [max] {%d%%}  profit", InpStatPct);
    DrawStatLabel(g_statPfx + "BHD", hdrDD2, clrGray, ry,
                  CORNER_RIGHT_UPPER, 7, rxBuy);
    DrawStatLabel(g_statPfx + "SHD", hdrDD2, clrGray, ry,
@@ -1334,33 +1333,35 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    for(int r = 0; r < 24; r++)
    {
-      string bp = hourBuyHit[r] > 0 ? StringFormat("%.0f%%", 100.0 * hourBuyHit[r] / hourBuyTotal[r]) : "--";
       int bp70 = CalcP85(ddVals, ddHrs, ddDirs, ddSesses, ddCount, r, 1, -1);
-      string bd = hourBuyHit[r] > 0 ? StringFormat("[%d] {%d}", hourBuyDD[r], bp70) : "";
-      if(hourBuyTotal[r] == 0) { bp = "--"; bd = ""; }
-      color bc = (hourBuyTotal[r] > 0 && hourBuyHit[r] == hourBuyTotal[r]) ? clrGreen : clrBlack;
       int bProf = hourBuyTotal[r] > 0 ? CalcProfit(hourBuyHit[r], hourBuyTotal[r], bp70) : 0;
-      string bPrS = hourBuyTotal[r] > 0 ? StringFormat("^%d^", bProf) : "";
-      DrawStatLabel(g_statPfx + "BH" + IntegerToString(r),
-         StringFormat("%dh-%dh  %d/%-3d %3s %s ", r, (r + 1) % 24, hourBuyHit[r], hourBuyTotal[r], bp, bd) + bPrS,
-         bc, ry, CORNER_RIGHT_UPPER, 8, rxBuy);
+      color bc = (hourBuyTotal[r] > 0 && hourBuyHit[r] == hourBuyTotal[r]) ? clrGreen : clrBlack;
       if(hourBuyTotal[r] > 0)
-         DrawStatLabel(g_statPfx + "PBH" + IntegerToString(r), bPrS,
-            bProf >= 0 ? clrGreen : clrRed, ry, CORNER_RIGHT_UPPER, 8, rxBuy);
+         DrawStatLabel(g_statPfx + "BH" + IntegerToString(r),
+            StringFormat("%dh-%dh  %2d/%-3d %4.0f%%  [%4d] {%4d}  %5d",
+               r, (r + 1) % 24, hourBuyHit[r], hourBuyTotal[r],
+               100.0 * hourBuyHit[r] / hourBuyTotal[r],
+               hourBuyDD[r], bp70, bProf),
+            bc, ry, CORNER_RIGHT_UPPER, 8, rxBuy);
+      else
+         DrawStatLabel(g_statPfx + "BH" + IntegerToString(r),
+            StringFormat("%dh-%dh   0/0     --", r, (r + 1) % 24),
+            clrGray, ry, CORNER_RIGHT_UPPER, 8, rxBuy);
 
-      string sp = hourSellHit[r] > 0 ? StringFormat("%.0f%%", 100.0 * hourSellHit[r] / hourSellTotal[r]) : "--";
       int sp70s = CalcP85(ddVals, ddHrs, ddDirs, ddSesses, ddCount, r, -1, -1);
-      string sd = hourSellHit[r] > 0 ? StringFormat("[%d] {%d}", hourSellDD[r], sp70s) : "";
-      if(hourSellTotal[r] == 0) { sp = "--"; sd = ""; }
-      color sc = (hourSellTotal[r] > 0 && hourSellHit[r] == hourSellTotal[r]) ? clrGreen : clrBlack;
       int sProf2 = hourSellTotal[r] > 0 ? CalcProfit(hourSellHit[r], hourSellTotal[r], sp70s) : 0;
-      string sPrS2 = hourSellTotal[r] > 0 ? StringFormat("^%d^", sProf2) : "";
-      DrawStatLabel(g_statPfx + "SH" + IntegerToString(r),
-         StringFormat("%dh-%dh  %d/%-3d %3s %s ", r, (r + 1) % 24, hourSellHit[r], hourSellTotal[r], sp, sd) + sPrS2,
-         sc, ry, CORNER_RIGHT_UPPER, 8, rxSell);
+      color sc = (hourSellTotal[r] > 0 && hourSellHit[r] == hourSellTotal[r]) ? clrGreen : clrBlack;
       if(hourSellTotal[r] > 0)
-         DrawStatLabel(g_statPfx + "PSH" + IntegerToString(r), sPrS2,
-            sProf2 >= 0 ? clrGreen : clrRed, ry, CORNER_RIGHT_UPPER, 8, rxSell);
+         DrawStatLabel(g_statPfx + "SH" + IntegerToString(r),
+            StringFormat("%dh-%dh  %2d/%-3d %4.0f%%  [%4d] {%4d}  %5d",
+               r, (r + 1) % 24, hourSellHit[r], hourSellTotal[r],
+               100.0 * hourSellHit[r] / hourSellTotal[r],
+               hourSellDD[r], sp70s, sProf2),
+            sc, ry, CORNER_RIGHT_UPPER, 8, rxSell);
+      else
+         DrawStatLabel(g_statPfx + "SH" + IntegerToString(r),
+            StringFormat("%dh-%dh   0/0     --", r, (r + 1) % 24),
+            clrGray, ry, CORNER_RIGHT_UPPER, 8, rxSell);
 
       ry += 16;
    }
