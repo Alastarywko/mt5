@@ -1093,9 +1093,14 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
             SetArrowColor(i, 0);
          s_needReset = false;
       }
-      ChartRedraw(0);
-      return;
    }
+
+   if(!g_statsOn)
+   {
+      // skip to persistent block at the bottom
+   }
+   else
+   {
    s_needReset = true;
 
    for(int s = 0; s < sigCount; s++)
@@ -1667,6 +1672,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    } // end page 4
 
+   } // end if(g_statsOn)
+
    //--- bottom-left: current hour Move & DD table (always visible)
    ObjectsDeleteAll(0, g_curPfx);
    MqlDateTime nowDt;
@@ -1685,7 +1692,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    // MOVE header
    DrawStatLabel(g_curPfx + "MH",
-      "MOVE   90%   80%   70%   60%   50%   40%   30%   20%   10%",
+      "MOVE  90%  80%  70%  60%  50%  40%  30%  20%  10%",
       clrGray, yBot, CORNER_LEFT_LOWER, 9);
    yBot -= ln;
 
@@ -1693,7 +1700,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    if(hourBuyHit[curHr] > 0)
    {
       DrawStatLabel(g_curPfx + "MB",
-         StringFormat("BUY  %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f",
+         StringFormat("BUY  %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f",
             CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 10),
             CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 20),
             CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, 1, 30),
@@ -1707,7 +1714,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    }
    else
       DrawStatLabel(g_curPfx + "MB",
-         "BUY     --    --    --    --    --    --    --    --    --",
+         "BUY    --   --   --   --   --   --   --   --   --",
          clrGray, yBot, CORNER_LEFT_LOWER, 9);
    yBot -= ln;
 
@@ -1715,7 +1722,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    if(hourSellHit[curHr] > 0)
    {
       DrawStatLabel(g_curPfx + "MS",
-         StringFormat("SELL %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f",
+         StringFormat("SELL %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f",
             CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 10),
             CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 20),
             CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr, -1, 30),
@@ -1729,13 +1736,13 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    }
    else
       DrawStatLabel(g_curPfx + "MS",
-         "SELL    --    --    --    --    --    --    --    --    --",
+         "SELL   --   --   --   --   --   --   --   --   --",
          clrGray, yBot, CORNER_LEFT_LOWER, 9);
    yBot -= ln + 4;
 
    // DD header
    DrawStatLabel(g_curPfx + "DH",
-      "DD     10%   20%   30%   40%   50%   60%   70%   80%   90%  100%",
+      "DD    20%  30%  40%  50%  60%  70%  80%  90% 100%",
       clrGray, yBot, CORNER_LEFT_LOWER, 9);
    yBot -= ln;
 
@@ -1743,8 +1750,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    if(hourBuyHit[curHr] > 0)
    {
       DrawStatLabel(g_curPfx + "DB",
-         StringFormat("BUY  %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
-            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 10),
+         StringFormat("BUY  %4d %4d %4d %4d %4d %4d %4d %4d %4d",
             CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 20),
             CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 30),
             CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, 1, 40),
@@ -1758,7 +1764,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    }
    else
       DrawStatLabel(g_curPfx + "DB",
-         "BUY     --    --    --    --    --    --    --    --    --    --",
+         "BUY    --   --   --   --   --   --   --   --   --",
          clrGray, yBot, CORNER_LEFT_LOWER, 9);
    yBot -= ln;
 
@@ -1766,8 +1772,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    if(hourSellHit[curHr] > 0)
    {
       DrawStatLabel(g_curPfx + "DS",
-         StringFormat("SELL %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
-            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 10),
+         StringFormat("SELL %4d %4d %4d %4d %4d %4d %4d %4d %4d",
             CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 20),
             CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 30),
             CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr, -1, 40),
@@ -1781,7 +1786,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    }
    else
       DrawStatLabel(g_curPfx + "DS",
-         "SELL    --    --    --    --    --    --    --    --    --    --",
+         "SELL   --   --   --   --   --   --   --   --   --",
          clrGray, yBot, CORNER_LEFT_LOWER, 9);
 
    ChartRedraw(0);
