@@ -105,6 +105,8 @@ datetime lastAlertTime;
 datetime lastDotBarTime;
 bool     dotAlerted;
 int      g_lastHour = -1;
+int      g_prelossBar = -1;
+int      g_prelossOrigClr = 0;
 
 const int REV_LOOKBACK  = 5;
 const int SQZ_LOOKBACK  = 6;
@@ -327,6 +329,12 @@ void OnTimer()
 
    if(remain > InpPreSignalSec || remain < 0)
    {
+      if(dotAlerted && g_prelossBar >= 0)
+      {
+         SetArrowColor(g_prelossBar, g_prelossOrigClr);
+         g_prelossBar = -1;
+         ChartRedraw(0);
+      }
       dotAlerted = false;
       return;
    }
@@ -568,7 +576,7 @@ void OnTimer()
 
    if(!dotAlerted && barStart != lastDotBarTime)
    {
-      // check if previous signal is a loss
+      // check if previous signal is a loss — paint it, save original color
       int prevSigBar = -1;
       bool prevIsBuy = false;
       int totalBars = ArraySize(BuyBuf);
@@ -591,7 +599,16 @@ void OnTimer()
             if(!prevIsBuy && l[b] <= entry - target) { hit = true; break; }
          }
          if(!hit)
+         {
+            if(BuyBuf[prevSigBar] != EMPTY_VALUE)             g_prelossOrigClr = (int)BuyClrBuf[prevSigBar];
+            else if(SellBuf[prevSigBar] != EMPTY_VALUE)       g_prelossOrigClr = (int)SellClrBuf[prevSigBar];
+            else if(StrongBuyBuf[prevSigBar] != EMPTY_VALUE)  g_prelossOrigClr = (int)StrongBuyClrBuf[prevSigBar];
+            else if(StrongSellBuf[prevSigBar] != EMPTY_VALUE) g_prelossOrigClr = (int)StrongSellClrBuf[prevSigBar];
+            g_prelossBar = prevSigBar;
             SetArrowColor(prevSigBar, 1);
+         }
+         else
+            g_prelossBar = -1;
       }
 
       string dir = preBuy ? "BUY" : "SELL";
@@ -2402,7 +2419,10 @@ int OnCalculate(const int rates_total,
    bool newArrow = (BuyBuf[prevBar] != EMPTY_VALUE || SellBuf[prevBar] != EMPTY_VALUE ||
                     StrongBuyBuf[prevBar] != EMPTY_VALUE || StrongSellBuf[prevBar] != EMPTY_VALUE);
    if(newArrow && prev_calculated > 0 && prev_calculated < rates_total)
+   {
       g_pageChanged = true;
+      g_prelossBar = -1;
+   }
 
    if(g_pageChanged)
    {
