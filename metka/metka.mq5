@@ -1087,20 +1087,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectDelete(0, g_pageBtnMove);
       ObjectDelete(0, g_pageBtnDD);
       ObjectDelete(0, g_pageBtnOpt);
-      if(s_needReset)
-      {
-         for(int i = minStart; i <= barLimit; i++)
-            SetArrowColor(i, 0);
-         s_needReset = false;
-      }
    }
 
-   if(!g_statsOn)
-   {
-      // skip to persistent block at the bottom
-   }
-   else
-   {
    s_needReset = true;
 
    for(int s = 0; s < sigCount; s++)
@@ -1111,6 +1099,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          SetArrowColor(sigBars[s], 1);
    }
 
+   if(!g_statsOn)
+   {
+      // skip to persistent block at the bottom
+   }
+   else
+   {
    //--- count streaks >= InpStreakLen per hour (chronological order)
    int buyStreakCnt[24], sellStreakCnt[24];
    ArrayInitialize(buyStreakCnt, 0);
