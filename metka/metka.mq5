@@ -2310,6 +2310,8 @@ int OnCalculate(const int rates_total,
             StrongBuyBuf[i] = low[i] - offset;
          else
             BuyBuf[i] = low[i] - offset;
+         GlobalVariableSet("MetkaSignal_Time", (double)time[i]);
+         GlobalVariableSet("MetkaSignal_Dir", isStrong ? 2 : 1);
       }
 
       if(sellSignal && sellCool)
@@ -2318,6 +2320,8 @@ int OnCalculate(const int rates_total,
             StrongSellBuf[i] = high[i] + offset;
          else
             SellBuf[i] = high[i] + offset;
+         GlobalVariableSet("MetkaSignal_Time", (double)time[i]);
+         GlobalVariableSet("MetkaSignal_Dir", isStrong ? -2 : -1);
       }
    }
 

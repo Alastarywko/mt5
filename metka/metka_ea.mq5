@@ -34,7 +34,6 @@ input int    InpTrailStep     = 10;     // Трейлінг: розмір (пу�
 
 CTrade   trade;
 int      hIndicator;
-datetime lastBarTime;
 datetime lastSignalTime;
 
 //+------------------------------------------------------------------+
@@ -93,9 +92,11 @@ int OnInit()
 
    Print("metka_ea: індикатор знайдено, SL=", InpSL, " TP=", InpTP,
          " pending=", InpPending, " trailing=", InpTrailing);
-   lastBarTime = iTime(_Symbol, _Period, 0);
-   lastSignalTime = FindLastExistingSignalTime();
-   Print("metka_ea: skip existing signals before ", lastSignalTime);
+   datetime savedTime = (datetime)GlobalVariableGet("MetkaEA_LastSigTime");
+   datetime foundTime = FindLastExistingSignalTime();
+   lastSignalTime = MathMax(savedTime, foundTime);
+   Print("metka_ea: skip existing signals before ", lastSignalTime,
+         " (saved=", savedTime, " found=", foundTime, ")");
    return(INIT_SUCCEEDED);
 }
 
@@ -110,40 +111,43 @@ void OnTick()
    if(InpTrailing)
       ManageTrailing();
 
-   datetime curBarTime = iTime(_Symbol, _Period, 0);
-   if(curBarTime == lastBarTime)
-      return;
-   lastBarTime = curBarTime;
-
    if(HasOpenPosition())
       return;
 
-   DeletePendingOrders();
-
-   // bar 1 = just closed bar, arrow appears here after bar close
-   double buy[], sell[], sbuy[], ssell[];
-   if(CopyBuffer(hIndicator, 0, 1, 1, buy)   <= 0) return;
-   if(CopyBuffer(hIndicator, 1, 1, 1, sell)  <= 0) return;
-   if(CopyBuffer(hIndicator, 2, 1, 1, sbuy)  <= 0) return;
-   if(CopyBuffer(hIndicator, 3, 1, 1, ssell) <= 0) return;
-
-   bool hasBuy  = (buy[0]  != EMPTY_VALUE) || (InpTradeStrongBuy  && sbuy[0]  != EMPTY_VALUE);
-   bool hasSell = (sell[0] != EMPTY_VALUE) || (InpTradeStrongSell && ssell[0] != EMPTY_VALUE);
-
-   if(!hasBuy && !hasSell)
+   if(!GlobalVariableCheck("MetkaSignal_Time"))
       return;
 
-   datetime sigTime = iTime(_Symbol, _Period, 1);
+   datetime sigTime = (datetime)GlobalVariableGet("MetkaSignal_Time");
+   int      sigDir  = (int)GlobalVariableGet("MetkaSignal_Dir");
+
    if(sigTime <= lastSignalTime)
       return;
 
-   if(hasBuy)
+   // sigDir: 1=buy, 2=strong buy, -1=sell, -2=strong sell
+   bool isBuy       = (sigDir == 1);
+   bool isStrongBuy = (sigDir == 2);
+   bool isSell       = (sigDir == -1);
+   bool isStrongSell = (sigDir == -2);
+
+   bool tradeBuy  = isBuy || (isStrongBuy && InpTradeStrongBuy);
+   bool tradeSell = isSell || (isStrongSell && InpTradeStrongSell);
+
+   if(!tradeBuy && !tradeSell)
+   {
+      lastSignalTime = sigTime;
+      GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
+      return;
+   }
+
+   lastSignalTime = sigTime;
+   GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
+
+   DeletePendingOrders();
+
+   if(tradeBuy)
       OpenBuy();
    else
       OpenSell();
-
-   lastSignalTime = sigTime;
-   PrintFormat("metka_ea: signal on bar %s, lastSignalTime updated", TimeToString(sigTime));
 }
 
 //+------------------------------------------------------------------+
