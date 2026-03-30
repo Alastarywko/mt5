@@ -2034,8 +2034,6 @@ int OnCalculate(const int rates_total,
    else
       start = MathMax(prev_calculated - 2, minStart);
 
-   bool pendingStrongBuy = false;
-
    for(int i = start; i <= barLimit; i++)
    {
       BuyBuf[i]        = EMPTY_VALUE;
@@ -2046,14 +2044,6 @@ int OnCalculate(const int rates_total,
       SellClrBuf[i]       = 0;
       StrongBuyClrBuf[i]  = 0;
       StrongSellClrBuf[i] = 0;
-
-      double offset2 = _Point * 200;
-      if(pendingStrongBuy)
-      {
-         StrongBuyBuf[i] = low[i] - offset2;
-         pendingStrongBuy = false;
-         continue;
-      }
 
       bool buySignal  = false;
       bool sellSignal = false;
@@ -2317,7 +2307,7 @@ int OnCalculate(const int rates_total,
       if(buySignal && buyCool)
       {
          if(isStrong)
-            pendingStrongBuy = true;
+            StrongBuyBuf[i] = low[i] - offset;
          else
             BuyBuf[i] = low[i] - offset;
       }
@@ -2337,7 +2327,7 @@ int OnCalculate(const int rates_total,
    StrongBuyBuf[rates_total - 1]  = EMPTY_VALUE;
    StrongSellBuf[rates_total - 1] = EMPTY_VALUE;
 
-   //--- recalc stats when a new arrow just formed
+   //--- recalc probability label when a new arrow just formed on the previous bar
    int prevBar = barLimit;
    bool newArrow = (BuyBuf[prevBar] != EMPTY_VALUE || SellBuf[prevBar] != EMPTY_VALUE ||
                     StrongBuyBuf[prevBar] != EMPTY_VALUE || StrongSellBuf[prevBar] != EMPTY_VALUE);
