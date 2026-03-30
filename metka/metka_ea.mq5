@@ -16,6 +16,8 @@ input double InpLotSize       = 1.0;    // Лот
 input int    InpTP            = 300;    // Take Profit (пунктів)
 input int    InpSL            = 300;    // Stop Loss (пунктів)
 input ulong  InpMagic         = 202612; // Magic number
+input bool   InpTradeStrongBuy  = false;  // Торгувати сильні BUY
+input bool   InpTradeStrongSell = true;   // Торгувати сильні SELL
 
 //═══════════════════════════════════════════════════════════════
 // ВІДКЛАДЕНИЙ ОРДЕР
@@ -34,6 +36,7 @@ CTrade   trade;
 int      hIndicator;
 datetime lastBarTime;
 datetime lastSignalTime;
+bool     g_firstRun = true;
 
 //+------------------------------------------------------------------+
 int FindChartIndicator()
@@ -57,6 +60,23 @@ ENUM_ORDER_TYPE_FILLING DetectFilling()
    return ORDER_FILLING_RETURN;
 }
 
+datetime FindLastExistingSignalTime()
+{
+   for(int s = 1; s < 500; s++)
+   {
+      double buy[], sell[], sbuy[], ssell[];
+      if(CopyBuffer(hIndicator, 0, s, 1, buy)   <= 0) continue;
+      if(CopyBuffer(hIndicator, 1, s, 1, sell)  <= 0) continue;
+      if(CopyBuffer(hIndicator, 2, s, 1, sbuy)  <= 0) continue;
+      if(CopyBuffer(hIndicator, 3, s, 1, ssell) <= 0) continue;
+
+      if(buy[0] != EMPTY_VALUE || sell[0] != EMPTY_VALUE ||
+         sbuy[0] != EMPTY_VALUE || ssell[0] != EMPTY_VALUE)
+         return iTime(_Symbol, _Period, s);
+   }
+   return TimeCurrent();
+}
+
 //+------------------------------------------------------------------+
 int OnInit()
 {
@@ -74,8 +94,13 @@ int OnInit()
 
    Print("metka_ea: індикатор знайдено, SL=", InpSL, " TP=", InpTP,
          " pending=", InpPending, " trailing=", InpTrailing);
-   lastBarTime    = 0;
-   lastSignalTime = 0;
+   lastBarTime = 0;
+   if(g_firstRun)
+   {
+      lastSignalTime = FindLastExistingSignalTime();
+      Print("metka_ea: skip existing signals before ", lastSignalTime);
+      g_firstRun = false;
+   }
    return(INIT_SUCCEEDED);
 }
 
@@ -113,8 +138,8 @@ void OnTick()
       if(CopyBuffer(hIndicator, 2, s, 1, sbuy)  <= 0) continue;
       if(CopyBuffer(hIndicator, 3, s, 1, ssell) <= 0) continue;
 
-      bool hasBuy  = (buy[0]  != EMPTY_VALUE) || (sbuy[0]  != EMPTY_VALUE);
-      bool hasSell = (sell[0] != EMPTY_VALUE) || (ssell[0] != EMPTY_VALUE);
+      bool hasBuy  = (buy[0]  != EMPTY_VALUE) || (InpTradeStrongBuy  && sbuy[0]  != EMPTY_VALUE);
+      bool hasSell = (sell[0] != EMPTY_VALUE) || (InpTradeStrongSell && ssell[0] != EMPTY_VALUE);
 
       if(!hasBuy && !hasSell)
          continue;
