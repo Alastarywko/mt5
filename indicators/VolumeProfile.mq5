@@ -34,7 +34,8 @@ input bool          InpUseRealVol  = true;           // Use Real Volume (if avai
 input double        InpVAPercent   = 70.0;           // Value Area % (default 70)
 input color         InpHVNColor    = C'221,221,244'; // High Volume Node color
 input color         InpLVNColor    = C'229,229,229'; // Low Volume Node color
-input color         InpPOCColor    = clrGold;        // POC color
+input color         InpPOCColor    = clrGold;        // POC block color
+input color         InpPOCLineClr  = clrDarkBlue;     // POC line color
 input color         InpVAHColor    = clrMediumPurple; // VAH color
 input color         InpVALColor    = clrMediumPurple; // VAL color
 input color         InpBuyColor    = C'192,250,192'; // Buy Delta color
@@ -411,7 +412,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
 
    //--- POC line
    ObjectCreate(0, g_prefix+"POC", OBJ_TREND, 0, tLeft, pocPrice, tFuture, pocPrice);
-   ObjectSetInteger(0, g_prefix+"POC", OBJPROP_COLOR, InpPOCColor);
+   ObjectSetInteger(0, g_prefix+"POC", OBJPROP_COLOR, InpPOCLineClr);
    ObjectSetInteger(0, g_prefix+"POC", OBJPROP_WIDTH, 2);
    ObjectSetInteger(0, g_prefix+"POC", OBJPROP_STYLE, STYLE_DASH);
    ObjectSetInteger(0, g_prefix+"POC", OBJPROP_RAY_RIGHT, false);
@@ -421,7 +422,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    ObjectCreate(0, g_prefix+"POC_L", OBJ_TEXT, 0, tFuture, pocPrice);
    ObjectSetString(0, g_prefix+"POC_L", OBJPROP_TEXT,
       "  POC " + DoubleToString(pocPrice, _Digits));
-   ObjectSetInteger(0, g_prefix+"POC_L", OBJPROP_COLOR, InpPOCColor);
+   ObjectSetInteger(0, g_prefix+"POC_L", OBJPROP_COLOR, InpPOCLineClr);
    ObjectSetInteger(0, g_prefix+"POC_L", OBJPROP_FONTSIZE, 9);
    ObjectSetString(0, g_prefix+"POC_L", OBJPROP_FONT, "Arial Bold");
    ObjectSetInteger(0, g_prefix+"POC_L", OBJPROP_ANCHOR, ANCHOR_LEFT);
@@ -430,7 +431,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    if(InpShowTPO && MathAbs(tpoPocPrice - pocPrice) > binSize * 0.5)
    {
       ObjectCreate(0, g_prefix+"TPOC", OBJ_TREND, 0, tLeft, tpoPocPrice, tFuture, tpoPocPrice);
-      ObjectSetInteger(0, g_prefix+"TPOC", OBJPROP_COLOR, clrMagenta);
+      ObjectSetInteger(0, g_prefix+"TPOC", OBJPROP_COLOR, clrLime);
       ObjectSetInteger(0, g_prefix+"TPOC", OBJPROP_WIDTH, 1);
       ObjectSetInteger(0, g_prefix+"TPOC", OBJPROP_STYLE, STYLE_DASHDOT);
       ObjectSetInteger(0, g_prefix+"TPOC", OBJPROP_RAY_RIGHT, false);
@@ -439,7 +440,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       ObjectCreate(0, g_prefix+"TPOC_L", OBJ_TEXT, 0, tFuture, tpoPocPrice);
       ObjectSetString(0, g_prefix+"TPOC_L", OBJPROP_TEXT,
          "  TPO-POC " + DoubleToString(tpoPocPrice, _Digits));
-      ObjectSetInteger(0, g_prefix+"TPOC_L", OBJPROP_COLOR, clrMagenta);
+      ObjectSetInteger(0, g_prefix+"TPOC_L", OBJPROP_COLOR, clrLime);
       ObjectSetInteger(0, g_prefix+"TPOC_L", OBJPROP_FONTSIZE, 8);
       ObjectSetInteger(0, g_prefix+"TPOC_L", OBJPROP_ANCHOR, ANCHOR_LEFT);
    }
