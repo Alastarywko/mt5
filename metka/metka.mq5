@@ -1846,8 +1846,13 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    } // end if(g_statsOn)
 
-   //--- bottom-left: current hour Move & DD table (always visible)
+   //--- bottom-left: current hour Move & DD table (only when stats OFF)
    ObjectsDeleteAll(0, g_curPfx);
+   if(g_statsOn)
+   {
+      ChartRedraw(0);
+      return;
+   }
    MqlDateTime nowDt;
    TimeToStruct(time[rates_total - 1], nowDt);
    int curHr = nowDt.hour;
