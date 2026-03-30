@@ -120,33 +120,30 @@ void OnTick()
 
    DeletePendingOrders();
 
-   int lookback = 5;
-   for(int s = 1; s <= lookback; s++)
-   {
-      datetime barTime = iTime(_Symbol, _Period, s);
-      if(barTime <= lastSignalTime)
-         continue;
+   // bar 1 = just closed bar, arrow appears here after bar close
+   double buy[], sell[], sbuy[], ssell[];
+   if(CopyBuffer(hIndicator, 0, 1, 1, buy)   <= 0) return;
+   if(CopyBuffer(hIndicator, 1, 1, 1, sell)  <= 0) return;
+   if(CopyBuffer(hIndicator, 2, 1, 1, sbuy)  <= 0) return;
+   if(CopyBuffer(hIndicator, 3, 1, 1, ssell) <= 0) return;
 
-      double buy[], sell[], sbuy[], ssell[];
-      if(CopyBuffer(hIndicator, 0, s, 1, buy)   <= 0) continue;
-      if(CopyBuffer(hIndicator, 1, s, 1, sell)  <= 0) continue;
-      if(CopyBuffer(hIndicator, 2, s, 1, sbuy)  <= 0) continue;
-      if(CopyBuffer(hIndicator, 3, s, 1, ssell) <= 0) continue;
+   bool hasBuy  = (buy[0]  != EMPTY_VALUE) || (InpTradeStrongBuy  && sbuy[0]  != EMPTY_VALUE);
+   bool hasSell = (sell[0] != EMPTY_VALUE) || (InpTradeStrongSell && ssell[0] != EMPTY_VALUE);
 
-      bool hasBuy  = (buy[0]  != EMPTY_VALUE) || (InpTradeStrongBuy  && sbuy[0]  != EMPTY_VALUE);
-      bool hasSell = (sell[0] != EMPTY_VALUE) || (InpTradeStrongSell && ssell[0] != EMPTY_VALUE);
+   if(!hasBuy && !hasSell)
+      return;
 
-      if(!hasBuy && !hasSell)
-         continue;
+   datetime sigTime = iTime(_Symbol, _Period, 1);
+   if(sigTime <= lastSignalTime)
+      return;
 
-      if(hasBuy)
-         OpenBuy();
-      else
-         OpenSell();
+   if(hasBuy)
+      OpenBuy();
+   else
+      OpenSell();
 
-      lastSignalTime = barTime;
-      break;
-   }
+   lastSignalTime = sigTime;
+   PrintFormat("metka_ea: signal on bar %s, lastSignalTime updated", TimeToString(sigTime));
 }
 
 //+------------------------------------------------------------------+
