@@ -36,7 +36,6 @@ CTrade   trade;
 int      hIndicator;
 datetime lastBarTime;
 datetime lastSignalTime;
-bool     g_firstRun = true;
 
 //+------------------------------------------------------------------+
 int FindChartIndicator()
@@ -94,13 +93,9 @@ int OnInit()
 
    Print("metka_ea: індикатор знайдено, SL=", InpSL, " TP=", InpTP,
          " pending=", InpPending, " trailing=", InpTrailing);
-   lastBarTime = 0;
-   if(g_firstRun)
-   {
-      lastSignalTime = FindLastExistingSignalTime();
-      Print("metka_ea: skip existing signals before ", lastSignalTime);
-      g_firstRun = false;
-   }
+   lastBarTime = iTime(_Symbol, _Period, 0);
+   lastSignalTime = FindLastExistingSignalTime();
+   Print("metka_ea: skip existing signals before ", lastSignalTime);
    return(INIT_SUCCEEDED);
 }
 
