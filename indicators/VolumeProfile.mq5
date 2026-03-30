@@ -413,7 +413,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    //--- POC line
    ObjectCreate(0, g_prefix+"POC", OBJ_TREND, 0, tLeft, pocPrice, tFuture, pocPrice);
    ObjectSetInteger(0, g_prefix+"POC", OBJPROP_COLOR, InpPOCLineClr);
-   ObjectSetInteger(0, g_prefix+"POC", OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, g_prefix+"POC", OBJPROP_WIDTH, 1);
    ObjectSetInteger(0, g_prefix+"POC", OBJPROP_STYLE, STYLE_DASH);
    ObjectSetInteger(0, g_prefix+"POC", OBJPROP_RAY_RIGHT, false);
    ObjectSetInteger(0, g_prefix+"POC", OBJPROP_BACK, false);
