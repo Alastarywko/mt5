@@ -111,9 +111,6 @@ void OnTick()
    if(InpTrailing)
       ManageTrailing();
 
-   if(HasOpenPosition())
-      return;
-
    if(!GlobalVariableCheck("MetkaSignal_Time"))
       return;
 
