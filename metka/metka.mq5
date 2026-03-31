@@ -33,26 +33,26 @@
 //═══════════════════════════════════════════════════════════════
 // ОСНОВНІ ПАРАМЕТРИ
 //═══════════════════════════════════════════════════════════════
-input int              InpFastPeriod  = 20;             // EMA швидка
+input int              InpFastPeriod  = 21;             // EMA швидка
 input int              InpSlowPeriod  = 50;             // EMA повільна
-input int              InpATRPeriod   = 20;             // ATR період
-input double           InpSpikeATR    = 1.2;            // Pin Bar: мін. розмір в ATR
-input ENUM_TIMEFRAMES  InpHTF         = PERIOD_CURRENT; // Старший ТФ (Current = авто)
-input int              InpCooldown    = 5;              // Мін. барів між сигналами
-input bool             InpTrendFilter = false;          // Тренд фільтр (блок контр-тренд)
+int              InpATRPeriod   = 20;             // ATR період
+double           InpSpikeATR    = 2;            // Pin Bar: мін. розмір в ATR
+ ENUM_TIMEFRAMES  InpHTF         = PERIOD_CURRENT; // Старший ТФ (Current = авто)
+input int              InpCooldown    = 7;              // Мін. барів між сигналами
+bool             InpTrendFilter = false;          // Тренд фільтр (блок контр-тренд)
 
 //═══════════════════════════════════════════════════════════════
 // МЕТОД 5: RSI ДИВЕРГЕНЦІЯ
 //═══════════════════════════════════════════════════════════════
-input bool             InpDivEnabled  = true;           // ── Дивергенція: вкл/викл
-input int              InpDivLookback = 30;             // ── Дивергенція: вікно пошуку
+bool             InpDivEnabled  = true;           // ── Дивергенція: вкл/викл
+int              InpDivLookback = 30;             // ── Дивергенція: вікно пошуку
 
 //═══════════════════════════════════════════════════════════════
 // ФІЛЬТР 1: ОБ'ЄМ (блокує слабкі свічки)
 //═══════════════════════════════════════════════════════════════
-input bool             InpVolEnabled  = true;           // ── Об'єм: вкл/викл
-input int              InpVolPeriod   = 10;             // ── Об'єм: період середнього
-input double           InpVolMin      = 1.0;            // ── Об'єм: мін. відношення до сер.
+input bool             InpVolEnabled  = false;           // ── Об'єм: вкл/викл
+input int              InpVolPeriod   = 15;             // ── Об'єм: період середнього
+input double           InpVolMin      = 0.7;            // ── Об'єм: мін. відношення до сер.
 
 //═══════════════════════════════════════════════════════════════
 // ФІЛЬТР 2: ADX (блокує контр-тренд при сильному тренді)
@@ -64,31 +64,31 @@ double                 InpADXLevel    = 30.0;
 //═══════════════════════════════════════════════════════════════
 // ФІЛЬТР 3: BOLLINGER BANDS (сигнал тільки біля крайніх зон)
 //═══════════════════════════════════════════════════════════════
-bool                   InpBBEnabled   = false;
-int                    InpBBPeriod    = 20;
-double                 InpBBDeviation = 2.0;
-double                 InpBBBuyBelow  = 0.35;
-double                 InpBBSellAbove = 0.65;
+input bool                   InpBBEnabled   = false;
+input int                    InpBBPeriod    = 22;
+input double                 InpBBDeviation = 2.0;
+input double                 InpBBBuyBelow  = 0.35;
+input double                 InpBBSellAbove = 0.65;
 
 //═══════════════════════════════════════════════════════════════
 // ФІЛЬТР 4: СВИНГ (сигнал тільки біля екстремумів)
 //═══════════════════════════════════════════════════════════════
-input bool             InpSwingEnabled = true;          // ── Свинг: вкл/викл
-input int              InpSwingBars    = 15;            // ── Свинг: вікно пошуку
-input double           InpSwingATR     = 1.5;           // ── Свинг: толеранс в ATR
+bool             InpSwingEnabled = true;          // ── Свинг: вкл/викл
+int              InpSwingBars    = 15;            // ── Свинг: вікно пошуку
+double           InpSwingATR     = 1.5;           // ── Свинг: толеранс в ATR
 
 //═══════════════════════════════════════════════════════════════
 // АЛЕРТИ
 //═══════════════════════════════════════════════════════════════
-input int              InpPreSignalSec = 10;            // Попередження за N секунд
+int              InpPreSignalSec = 10;            // Попередження за N секунд
 input bool             InpAlerts      = true;           // Алерти
-input bool             InpPush        = false;          // Push-повідомлення
+bool             InpPush        = false;          // Push-повідомлення
 
 //═══════════════════════════════════════════════════════════════
 // СТАТИСТИКА
 //═══════════════════════════════════════════════════════════════
 input bool             InpShowStats   = false;          // Панель статистики
-input int              InpStatHours   = 168;            // Період аналізу (годин)
+input int              InpStatHours   = 400;            // Період аналізу (годин)
 input int              InpStatTarget  = 100;            // Ціль (пунктів)
 input int              InpStatPct     = 85;             // Перцентиль просадки (%)
 input int              InpStreakLen   = 3;              // Мін. довжина серії (streak)
