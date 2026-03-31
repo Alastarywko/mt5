@@ -66,7 +66,7 @@ double                 InpADXLevel    = 30.0;
 //═══════════════════════════════════════════════════════════════
 input bool                   InpBBEnabled   = false;
 input int                    InpBBPeriod    = 22;
-input double                 InpBBDeviation = 2.0;
+input double                 InpBBDeviation = 0.3;
 input double                 InpBBBuyBelow  = 0.35;
 input double                 InpBBSellAbove = 0.65;
 
