@@ -13,11 +13,19 @@
 // ОСНОВНІ ПАРАМЕТРИ
 //═══════════════════════════════════════════════════════════════
 input double InpLotSize       = 1.0;    // Лот
-input int    InpTP            = 300;    // Take Profit (пунктів)
-input int    InpSL            = 300;    // Stop Loss (пунктів)
+input int    InpTP            = 100;    // Take Profit (пунктів)
+input int    InpSL            = 1450;   // Stop Loss (пунктів)
 input ulong  InpMagic         = 202612; // Magic number
 input bool   InpTradeStrongBuy  = false;  // Торгувати сильні BUY
 input bool   InpTradeStrongSell = true;   // Торгувати сильні SELL
+
+//═══════════════════════════════════════════════════════════════
+// КОНТР-ОРДЕР
+//═══════════════════════════════════════════════════════════════
+input bool   InpCounter       = false;  // Контр-ордер: вкл/викл
+input double InpCounterLot    = 1.0;    // Контр-ордер: лот
+input int    InpCounterTP     = 100;    // Контр-ордер: Take Profit (пунктів)
+input int    InpCounterSL     = 1450;   // Контр-ордер: Stop Loss (пунктів)
 
 //═══════════════════════════════════════════════════════════════
 // ВІДКЛАДЕНИЙ ОРДЕР
@@ -142,9 +150,17 @@ void OnTick()
    DeletePendingOrders();
 
    if(tradeBuy)
+   {
       OpenBuy();
+      if(InpCounter)
+         OpenCounterSell();
+   }
    else
+   {
       OpenSell();
+      if(InpCounter)
+         OpenCounterBuy();
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -201,6 +217,32 @@ void OpenSell()
       else
          PrintFormat("metka_ea: SELL @ %.2f SL=%.2f TP=%.2f", bid, sl, tp);
    }
+}
+
+//+------------------------------------------------------------------+
+void OpenCounterBuy()
+{
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double sl = InpCounterSL > 0 ? NormalizeDouble(ask - InpCounterSL * _Point, _Digits) : 0;
+   double tp = InpCounterTP > 0 ? NormalizeDouble(ask + InpCounterTP * _Point, _Digits) : 0;
+
+   if(!trade.Buy(InpCounterLot, _Symbol, ask, sl, tp, "Metka COUNTER BUY"))
+      PrintFormat("COUNTER BUY FAIL: %d %s", trade.ResultRetcode(), trade.ResultComment());
+   else
+      PrintFormat("metka_ea: COUNTER BUY @ %.2f SL=%.2f TP=%.2f", ask, sl, tp);
+}
+
+//+------------------------------------------------------------------+
+void OpenCounterSell()
+{
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double sl = InpCounterSL > 0 ? NormalizeDouble(bid + InpCounterSL * _Point, _Digits) : 0;
+   double tp = InpCounterTP > 0 ? NormalizeDouble(bid - InpCounterTP * _Point, _Digits) : 0;
+
+   if(!trade.Sell(InpCounterLot, _Symbol, bid, sl, tp, "Metka COUNTER SELL"))
+      PrintFormat("COUNTER SELL FAIL: %d %s", trade.ResultRetcode(), trade.ResultComment());
+   else
+      PrintFormat("metka_ea: COUNTER SELL @ %.2f SL=%.2f TP=%.2f", bid, sl, tp);
 }
 
 //+------------------------------------------------------------------+
