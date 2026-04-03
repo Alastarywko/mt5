@@ -306,7 +306,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
             ObjectDelete(0, g_pfx + "BL" + IntegerToString(g_bullLeadBars[d]));
          g_bullLeadBarCnt = 0;
          g_bullLeadActive = true;
-         g_bullLead = 1;
+         g_bullLead = 0;
       }
       if(completeBearPrep && InpBearLead)
       {
@@ -314,7 +314,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
             ObjectDelete(0, g_pfx + "SL" + IntegerToString(g_bearLeadBars[d]));
          g_bearLeadBarCnt = 0;
          g_bearLeadActive = true;
-         g_bearLead = 1;
+         g_bearLead = 0;
       }
 
       // Cancellation: opposite preparation completes
@@ -339,7 +339,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       }
 
       // Bullish Lead-Up: close < low[N bars ago]
-      if(g_bullLeadActive && !completeBullPrep && i >= InpLeadCompare)
+      if(g_bullLeadActive && i >= InpLeadCompare)
       {
          if(close[i] < low[i - InpLeadCompare])
          {
@@ -386,7 +386,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       }
 
       // Bearish Lead-Up: close > high[N bars ago]
-      if(g_bearLeadActive && !completeBearPrep && i >= InpLeadCompare)
+      if(g_bearLeadActive && i >= InpLeadCompare)
       {
          if(close[i] > high[i - InpLeadCompare])
          {
