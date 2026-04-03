@@ -62,10 +62,12 @@ void OnDeinit(const int reason)
 
 //+------------------------------------------------------------------+
 void DrawLabel(string id, datetime t, double price, string text,
-               color clr, int fontSize, bool isBelow)
+               color clr, int fontSize, bool isBelow, int layer = 0)
 {
    if(ObjectFind(0, id) >= 0) return;
-   ObjectCreate(0, id, OBJ_TEXT, 0, t, price);
+   double shift = _Point * 40 * layer;
+   double y = isBelow ? price - shift : price + shift;
+   ObjectCreate(0, id, OBJ_TEXT, 0, t, y);
    ObjectSetString(0, id, OBJPROP_TEXT, text);
    ObjectSetString(0, id, OBJPROP_FONT, "Arial Bold");
    ObjectSetInteger(0, id, OBJPROP_FONTSIZE, fontSize);
@@ -127,6 +129,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
 
    for(int i = start; i < rates_total; i++)
    {
+      int belowCount = 0, aboveCount = 0;
       bool completeBullPrep = false;
       bool completeBearPrep = false;
 
@@ -138,12 +141,13 @@ int OnCalculate(const int rates_total, const int prev_calculated,
          bullPrep++;
          if(bullPrep > InpPrepLen) bullPrep = InpPrepLen + 1;
 
-         if(bullPrep <= InpPrepLen)
+         if(bullPrep <= InpPrepLen && bullPrep >= 6)
          {
             bool isKey = (bullPrep == InpPrepLen);
             DrawLabel(g_pfx + "BP" + IntegerToString(i), time[i], low[i],
                       IntegerToString(bullPrep), InpBullPrepClr,
-                      isKey ? InpPrepFontSize + 3 : InpPrepFontSize, true);
+                      isKey ? InpPrepFontSize + 3 : InpPrepFontSize, true, belowCount);
+            belowCount++;
 
             if(bullPrep == InpPrepLen)
             {
@@ -170,12 +174,13 @@ int OnCalculate(const int rates_total, const int prev_calculated,
          bearPrep++;
          if(bearPrep > InpPrepLen) bearPrep = InpPrepLen + 1;
 
-         if(bearPrep <= InpPrepLen)
+         if(bearPrep <= InpPrepLen && bearPrep >= 6)
          {
             bool isKey = (bearPrep == InpPrepLen);
             DrawLabel(g_pfx + "SP" + IntegerToString(i), time[i], high[i],
                       IntegerToString(bearPrep), InpBearPrepClr,
-                      isKey ? InpPrepFontSize + 3 : InpPrepFontSize, false);
+                      isKey ? InpPrepFontSize + 3 : InpPrepFontSize, false, aboveCount);
+            aboveCount++;
 
             if(bearPrep == InpPrepLen)
             {
@@ -261,7 +266,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                bool isComplete = (bullLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
                DrawLabel(g_pfx + "BL" + IntegerToString(i), time[i], low[i],
-                         IntegerToString(bullLead), InpBullLeadClr, fs, true);
+                         IntegerToString(bullLead), InpBullLeadClr, fs, true, belowCount);
+               belowCount++;
 
                if(isComplete)
                {
@@ -292,7 +298,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                bool isComplete = (bearLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
                DrawLabel(g_pfx + "SL" + IntegerToString(i), time[i], high[i],
-                         IntegerToString(bearLead), InpBearLeadClr, fs, false);
+                         IntegerToString(bearLead), InpBearLeadClr, fs, false, aboveCount);
+               aboveCount++;
 
                if(isComplete)
                {
