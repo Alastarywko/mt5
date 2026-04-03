@@ -17,9 +17,9 @@ input int    InpPrepLen      = 9;        // Preparation Phase Length
 input int    InpPrepCompare  = 4;        // Preparation Comparison Period
 input bool   InpBullPrep     = true;     // Bullish Preparation
 input bool   InpBearPrep     = true;     // Bearish Preparation
-input color  InpBullPrepClr  = clrGreen; // Bullish Preparation Color
-input color  InpBearPrepClr  = clrRed;   // Bearish Preparation Color
-input int    InpPrepFontSize = 9;        // Preparation Font Size
+input color  InpBullPrepClr  = clrPurple; // Bullish Preparation Color
+input color  InpBearPrepClr  = clrPurple; // Bearish Preparation Color
+input int    InpPrepFontSize = 7;        // Preparation Font Size
 input int    InpDisplayHours = 72;      // Display period (hours, 0 = all)
 
 //═══════════════════════════════════════════════════════════════
@@ -31,8 +31,8 @@ input bool   InpBullLead     = true;     // Bullish Lead-Up
 input bool   InpBearLead     = true;     // Bearish Lead-Up
 input bool   InpCancellation = true;     // Apply Cancellation
 input color  InpBullLeadClr  = clrDodgerBlue; // Bullish Lead-Up Color
-input color  InpBearLeadClr  = clrOrangeRed;  // Bearish Lead-Up Color
-input int    InpLeadFontSize = 9;        // Lead-Up Font Size
+input color  InpBearLeadClr  = clrDodgerBlue;  // Bearish Lead-Up Color
+input int    InpLeadFontSize = 7;        // Lead-Up Font Size
 
 //═══════════════════════════════════════════════════════════════
 // LEVELS
@@ -53,6 +53,8 @@ datetime g_preAlertBar = 0;
 int g_bullPrep = 0, g_bearPrep = 0;
 int g_bullLead = 0, g_bearLead = 0;
 bool g_bullLeadActive = false, g_bearLeadActive = false;
+int g_bullLeadBars[], g_bearLeadBars[];
+int g_bullLeadBarCnt = 0, g_bearLeadBarCnt = 0;
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -167,6 +169,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       g_bullPrep = 0; g_bearPrep = 0;
       g_bullLead = 0; g_bearLead = 0;
       g_bullLeadActive = false; g_bearLeadActive = false;
+      g_bullLeadBarCnt = 0; g_bearLeadBarCnt = 0;
       g_bullPrepLvlIdx = 0; g_bearPrepLvlIdx = 0;
       g_bullLeadLvlIdx = 0; g_bearLeadLvlIdx = 0;
       start = minBars;
@@ -188,73 +191,88 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       //=== PREPARATION PHASE ===
 
       // Bullish Preparation: close < close[N bars ago]
-      if(InpBullPrep && close[i] < close[i - InpPrepCompare])
+      int prevBullPrep = g_bullPrep;
+      g_bullPrep = (InpBullPrep && close[i] < close[i - InpPrepCompare]) ? g_bullPrep + 1 : 0;
+
+      if(g_bullPrep >= 6 && g_bullPrep <= InpPrepLen && canDraw)
       {
-         g_bullPrep++;
-         if(g_bullPrep > InpPrepLen) g_bullPrep = InpPrepLen + 1;
-
-         if(g_bullPrep <= InpPrepLen && g_bullPrep >= 6 && canDraw)
+         bool isKey = (g_bullPrep == InpPrepLen);
+         DrawLabel(g_pfx + "BP" + IntegerToString(i), time[i], low[i],
+                   IntegerToString(g_bullPrep), InpBullPrepClr,
+                   isKey ? InpPrepFontSize + 3 : InpPrepFontSize, true, belowCount);
+         belowCount++;
+      }
+      if(g_bullPrep == InpPrepLen)
+      {
+         completeBullPrep = true;
+         if(canDraw)
          {
-            bool isKey = (g_bullPrep == InpPrepLen);
-            DrawLabel(g_pfx + "BP" + IntegerToString(i), time[i], low[i],
-                      IntegerToString(g_bullPrep), InpBullPrepClr,
-                      isKey ? InpPrepFontSize + 3 : InpPrepFontSize, true, belowCount);
-            belowCount++;
-
-            if(g_bullPrep == InpPrepLen)
+            string aNm = g_pfx + "BA" + IntegerToString(i);
+            if(ObjectFind(0, aNm) < 0)
             {
-               completeBullPrep = true;
-               if(InpAlertPrep && i >= rates_total - 2)
-                  Alert("Sequencer: Bullish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
+               ObjectCreate(0, aNm, OBJ_TEXT, 0, time[i], low[i] - _Point * 160);
+               ObjectSetString(0, aNm, OBJPROP_TEXT, "▲");
+               ObjectSetString(0, aNm, OBJPROP_FONT, "Arial");
+               ObjectSetInteger(0, aNm, OBJPROP_FONTSIZE, 8);
+               ObjectSetInteger(0, aNm, OBJPROP_COLOR, InpBullPrepClr);
+               ObjectSetInteger(0, aNm, OBJPROP_ANCHOR, ANCHOR_CENTER);
+               ObjectSetInteger(0, aNm, OBJPROP_SELECTABLE, false);
             }
          }
+         if(InpAlertPrep && i >= rates_total - 2)
+            Alert("Sequencer: Bullish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
       }
-      else if(g_bullPrep > 0 && !(close[i] < close[i - InpPrepCompare]))
+      // delete incomplete labels on reset
+      if(g_bullPrep == 0 && prevBullPrep > 0 && prevBullPrep < InpPrepLen)
       {
-         // delete incomplete preparation labels
-         for(int d = 1; d <= g_bullPrep && d <= InpPrepLen; d++)
+         for(int d = 1; d <= prevBullPrep; d++)
          {
-            int idx = i - g_bullPrep + d;
+            int idx = i - prevBullPrep - 1 + d;
             if(idx >= 0) ObjectDelete(0, g_pfx + "BP" + IntegerToString(idx));
          }
-         g_bullPrep = 0;
       }
 
       // Bearish Preparation: close > close[N bars ago]
-      if(InpBearPrep && close[i] > close[i - InpPrepCompare])
+      int prevBearPrep = g_bearPrep;
+      g_bearPrep = (InpBearPrep && close[i] > close[i - InpPrepCompare]) ? g_bearPrep + 1 : 0;
+
+      if(g_bearPrep >= 6 && g_bearPrep <= InpPrepLen && canDraw)
       {
-         g_bearPrep++;
-         if(g_bearPrep > InpPrepLen) g_bearPrep = InpPrepLen + 1;
-
-         if(g_bearPrep <= InpPrepLen && g_bearPrep >= 6 && canDraw)
+         bool isKey = (g_bearPrep == InpPrepLen);
+         DrawLabel(g_pfx + "SP" + IntegerToString(i), time[i], high[i],
+                   IntegerToString(g_bearPrep), InpBearPrepClr,
+                   isKey ? InpPrepFontSize + 3 : InpPrepFontSize, false, aboveCount);
+         aboveCount++;
+      }
+      if(g_bearPrep == InpPrepLen)
+      {
+         completeBearPrep = true;
+         if(canDraw)
          {
-            bool isKey = (g_bearPrep == InpPrepLen);
-            DrawLabel(g_pfx + "SP" + IntegerToString(i), time[i], high[i],
-                      IntegerToString(g_bearPrep), InpBearPrepClr,
-                      isKey ? InpPrepFontSize + 3 : InpPrepFontSize, false, aboveCount);
-            aboveCount++;
-
-            if(g_bearPrep == InpPrepLen)
+            string aNm = g_pfx + "SA" + IntegerToString(i);
+            if(ObjectFind(0, aNm) < 0)
             {
-               completeBearPrep = true;
-               if(InpAlertPrep && i >= rates_total - 2)
-                  Alert("Sequencer: Bearish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
+               ObjectCreate(0, aNm, OBJ_TEXT, 0, time[i], high[i] + _Point * 160);
+               ObjectSetString(0, aNm, OBJPROP_TEXT, "▼");
+               ObjectSetString(0, aNm, OBJPROP_FONT, "Arial");
+               ObjectSetInteger(0, aNm, OBJPROP_FONTSIZE, 8);
+               ObjectSetInteger(0, aNm, OBJPROP_COLOR, InpBearPrepClr);
+               ObjectSetInteger(0, aNm, OBJPROP_ANCHOR, ANCHOR_CENTER);
+               ObjectSetInteger(0, aNm, OBJPROP_SELECTABLE, false);
             }
          }
+         if(InpAlertPrep && i >= rates_total - 2)
+            Alert("Sequencer: Bearish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
       }
-      else if(g_bearPrep > 0 && !(close[i] > close[i - InpPrepCompare]))
+      // delete incomplete labels on reset
+      if(g_bearPrep == 0 && prevBearPrep > 0 && prevBearPrep < InpPrepLen)
       {
-         for(int d = 1; d <= g_bearPrep && d <= InpPrepLen; d++)
+         for(int d = 1; d <= prevBearPrep; d++)
          {
-            int idx = i - g_bearPrep + d;
+            int idx = i - prevBearPrep - 1 + d;
             if(idx >= 0) ObjectDelete(0, g_pfx + "SP" + IntegerToString(idx));
          }
-         g_bearPrep = 0;
       }
-
-      // Reset opposite on new count
-      if(g_bullPrep == 1) g_bearPrep = 0;
-      if(g_bearPrep == 1) g_bullPrep = 0;
 
       //=== PREPARATION LEVELS ===
       if(InpShowPrepLvl)
@@ -283,13 +301,20 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       // Start lead-up on preparation completion
       if(completeBullPrep && InpBullLead)
       {
+         // delete previous incomplete bullish leadup labels
+         for(int d = 0; d < g_bullLeadBarCnt; d++)
+            ObjectDelete(0, g_pfx + "BL" + IntegerToString(g_bullLeadBars[d]));
+         g_bullLeadBarCnt = 0;
          g_bullLeadActive = true;
-         g_bullLead = 0;
+         g_bullLead = 1;
       }
       if(completeBearPrep && InpBearLead)
       {
+         for(int d = 0; d < g_bearLeadBarCnt; d++)
+            ObjectDelete(0, g_pfx + "SL" + IntegerToString(g_bearLeadBars[d]));
+         g_bearLeadBarCnt = 0;
          g_bearLeadActive = true;
-         g_bearLead = 0;
+         g_bearLead = 1;
       }
 
       // Cancellation: opposite preparation completes
@@ -297,34 +322,55 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       {
          if(completeBearPrep && g_bullLeadActive)
          {
+            for(int d = 0; d < g_bullLeadBarCnt; d++)
+               ObjectDelete(0, g_pfx + "BL" + IntegerToString(g_bullLeadBars[d]));
+            g_bullLeadBarCnt = 0;
             g_bullLeadActive = false;
             g_bullLead = 0;
          }
          if(completeBullPrep && g_bearLeadActive)
          {
+            for(int d = 0; d < g_bearLeadBarCnt; d++)
+               ObjectDelete(0, g_pfx + "SL" + IntegerToString(g_bearLeadBars[d]));
+            g_bearLeadBarCnt = 0;
             g_bearLeadActive = false;
             g_bearLead = 0;
          }
       }
 
-      // Bullish Lead-Up: close <= low[N bars ago]
-      if(g_bullLeadActive && i >= InpLeadCompare)
+      // Bullish Lead-Up: close < low[N bars ago]
+      if(g_bullLeadActive && !completeBullPrep && i >= InpLeadCompare)
       {
-         if(close[i] <= low[i - InpLeadCompare])
+         if(close[i] < low[i - InpLeadCompare])
          {
             g_bullLead++;
-            if(g_bullLead <= InpLeadLen && g_bullLead >= 6 && canDraw)
+            if(g_bullLead >= 6 && g_bullLead <= InpLeadLen && canDraw)
             {
                bool isComplete = (g_bullLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
                DrawLabel(g_pfx + "BL" + IntegerToString(i), time[i], low[i],
                          IntegerToString(g_bullLead), InpBullLeadClr, fs, true, belowCount);
                belowCount++;
+               ArrayResize(g_bullLeadBars, g_bullLeadBarCnt + 1);
+               g_bullLeadBars[g_bullLeadBarCnt] = i;
+               g_bullLeadBarCnt++;
 
                if(isComplete)
                {
+                  g_bullLeadBarCnt = 0;
                   g_bullLeadActive = false;
                   g_bullLead = 0;
+                  string aNm2 = g_pfx + "BLA" + IntegerToString(i);
+                  if(ObjectFind(0, aNm2) < 0)
+                  {
+                     ObjectCreate(0, aNm2, OBJ_TEXT, 0, time[i], low[i] - _Point * 160);
+                     ObjectSetString(0, aNm2, OBJPROP_TEXT, "▲");
+                     ObjectSetString(0, aNm2, OBJPROP_FONT, "Arial");
+                     ObjectSetInteger(0, aNm2, OBJPROP_FONTSIZE, 8);
+                     ObjectSetInteger(0, aNm2, OBJPROP_COLOR, InpBullLeadClr);
+                     ObjectSetInteger(0, aNm2, OBJPROP_ANCHOR, ANCHOR_CENTER);
+                     ObjectSetInteger(0, aNm2, OBJPROP_SELECTABLE, false);
+                  }
                   if(InpAlertLead && i >= rates_total - 2)
                      Alert("Sequencer: Bullish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
 
@@ -339,24 +385,39 @@ int OnCalculate(const int rates_total, const int prev_calculated,
          }
       }
 
-      // Bearish Lead-Up: close >= high[N bars ago]
-      if(g_bearLeadActive && i >= InpLeadCompare)
+      // Bearish Lead-Up: close > high[N bars ago]
+      if(g_bearLeadActive && !completeBearPrep && i >= InpLeadCompare)
       {
-         if(close[i] >= high[i - InpLeadCompare])
+         if(close[i] > high[i - InpLeadCompare])
          {
             g_bearLead++;
-            if(g_bearLead <= InpLeadLen && g_bearLead >= 6 && canDraw)
+            if(g_bearLead >= 6 && g_bearLead <= InpLeadLen && canDraw)
             {
                bool isComplete = (g_bearLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
                DrawLabel(g_pfx + "SL" + IntegerToString(i), time[i], high[i],
                          IntegerToString(g_bearLead), InpBearLeadClr, fs, false, aboveCount);
                aboveCount++;
+               ArrayResize(g_bearLeadBars, g_bearLeadBarCnt + 1);
+               g_bearLeadBars[g_bearLeadBarCnt] = i;
+               g_bearLeadBarCnt++;
 
                if(isComplete)
                {
+                  g_bearLeadBarCnt = 0;
                   g_bearLeadActive = false;
                   g_bearLead = 0;
+                  string aNm2 = g_pfx + "SLA" + IntegerToString(i);
+                  if(ObjectFind(0, aNm2) < 0)
+                  {
+                     ObjectCreate(0, aNm2, OBJ_TEXT, 0, time[i], high[i] + _Point * 160);
+                     ObjectSetString(0, aNm2, OBJPROP_TEXT, "▼");
+                     ObjectSetString(0, aNm2, OBJPROP_FONT, "Arial");
+                     ObjectSetInteger(0, aNm2, OBJPROP_FONTSIZE, 8);
+                     ObjectSetInteger(0, aNm2, OBJPROP_COLOR, InpBearLeadClr);
+                     ObjectSetInteger(0, aNm2, OBJPROP_ANCHOR, ANCHOR_CENTER);
+                     ObjectSetInteger(0, aNm2, OBJPROP_SELECTABLE, false);
+                  }
                   if(InpAlertLead && i >= rates_total - 2)
                      Alert("Sequencer: Bearish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
 
