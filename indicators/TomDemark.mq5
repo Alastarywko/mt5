@@ -20,6 +20,7 @@ input bool   InpBearPrep     = true;     // Bearish Preparation
 input color  InpBullPrepClr  = clrGreen; // Bullish Preparation Color
 input color  InpBearPrepClr  = clrRed;   // Bearish Preparation Color
 input int    InpPrepFontSize = 9;        // Preparation Font Size
+input int    InpDisplayHours = 72;      // Display period (hours, 0 = all)
 
 //═══════════════════════════════════════════════════════════════
 // LEAD-UP PHASE
@@ -42,22 +43,71 @@ input bool   InpShowLeadLvl  = false;    // Show Lead-Up Levels
 //═══════════════════════════════════════════════════════════════
 // ALERTS
 //═══════════════════════════════════════════════════════════════
-input bool   InpAlertPrep    = true;     // Alert on Preparation Complete
-input bool   InpAlertLead    = true;     // Alert on Lead-Up Complete
+input bool   InpAlertPrep    = false;    // Alert on Preparation Complete (9)
+input bool   InpAlertLead    = false;    // Alert on Lead-Up Complete (13)
+input bool   InpPreAlert     = true;     // Pre-alert 10s before 9/13
+input int    InpPreAlertSec  = 10;       // Pre-alert seconds before bar close
 
 string g_pfx = "TD2_";
+datetime g_preAlertBar = 0;
+int g_bullPrep = 0, g_bearPrep = 0;
+int g_bullLead = 0, g_bearLead = 0;
+bool g_bullLeadActive = false, g_bearLeadActive = false;
 
 //+------------------------------------------------------------------+
 int OnInit()
 {
    IndicatorSetString(INDICATOR_SHORTNAME, "Sequencer");
+   EventSetTimer(1);
    return(INIT_SUCCEEDED);
 }
 
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+   EventKillTimer();
    ObjectsDeleteAll(0, g_pfx);
+}
+
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   if(!InpPreAlert) return;
+
+   datetime barStart = iTime(_Symbol, _Period, 0);
+   int barSec = PeriodSeconds(_Period);
+   if(barSec <= 0) return;
+   datetime barEnd = barStart + barSec;
+   datetime now = TimeCurrent();
+   int remain = (int)(barEnd - now);
+
+   if(remain > InpPreAlertSec || remain < 0) return;
+   if(barStart == g_preAlertBar) return;
+
+   int bars = iBars(_Symbol, _Period);
+   if(bars < InpPrepCompare + 2) return;
+
+   double c0 = iClose(_Symbol, _Period, 0);
+   double cN = iClose(_Symbol, _Period, InpPrepCompare);
+   double lo2 = iLow(_Symbol, _Period, InpLeadCompare);
+   double hi2 = iHigh(_Symbol, _Period, InpLeadCompare);
+
+   bool prepBuy9  = (g_bullPrep == InpPrepLen - 1 && c0 < cN);
+   bool prepSell9 = (g_bearPrep == InpPrepLen - 1 && c0 > cN);
+   bool leadBuy13  = (g_bullLeadActive && g_bullLead == InpLeadLen - 1 && c0 <= lo2);
+   bool leadSell13 = (g_bearLeadActive && g_bearLead == InpLeadLen - 1 && c0 >= hi2);
+
+   string msg = "";
+   if(prepBuy9)   msg = "PRE: Bullish 9 forming";
+   if(prepSell9)  msg = "PRE: Bearish 9 forming";
+   if(leadBuy13)  msg = "PRE: Bullish 13 forming";
+   if(leadSell13) msg = "PRE: Bearish 13 forming";
+
+   if(msg != "")
+   {
+      Alert(StringFormat("Sequencer %s | %s %s | %ds", msg, _Symbol, EnumToString(_Period), remain));
+      g_preAlertBar = barStart;
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -103,53 +153,55 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    int minBars = MathMax(InpPrepCompare, InpLeadCompare) + 2;
    if(rates_total < minBars + 10) return(0);
 
-   static int bullPrep = 0, bearPrep = 0;
-   static int bullLead = 0, bearLead = 0;
-   static bool bullLeadActive = false, bearLeadActive = false;
-   static int bullPrepLvlIdx = 0, bearPrepLvlIdx = 0;
-   static int bullLeadLvlIdx = 0, bearLeadLvlIdx = 0;
-   static datetime bullPrepLvlStart = 0, bearPrepLvlStart = 0;
-   static double   bullPrepLvlPrice = 0, bearPrepLvlPrice = 0;
-   static datetime bullLeadLvlStart = 0, bearLeadLvlStart = 0;
-   static double   bullLeadLvlPrice = 0, bearLeadLvlPrice = 0;
+   static int g_bullPrepLvlIdx = 0, g_bearPrepLvlIdx = 0;
+   static int g_bullLeadLvlIdx = 0, g_bearLeadLvlIdx = 0;
+   static datetime g_bullPrepLvlStart = 0, g_bearPrepLvlStart = 0;
+   static double   g_bullPrepLvlPrice = 0, g_bearPrepLvlPrice = 0;
+   static datetime g_bullLeadLvlStart = 0, g_bearLeadLvlStart = 0;
+   static double   g_bullLeadLvlPrice = 0, g_bearLeadLvlPrice = 0;
 
    int start;
    if(prev_calculated == 0)
    {
       ObjectsDeleteAll(0, g_pfx);
-      bullPrep = 0; bearPrep = 0;
-      bullLead = 0; bearLead = 0;
-      bullLeadActive = false; bearLeadActive = false;
-      bullPrepLvlIdx = 0; bearPrepLvlIdx = 0;
-      bullLeadLvlIdx = 0; bearLeadLvlIdx = 0;
+      g_bullPrep = 0; g_bearPrep = 0;
+      g_bullLead = 0; g_bearLead = 0;
+      g_bullLeadActive = false; g_bearLeadActive = false;
+      g_bullPrepLvlIdx = 0; g_bearPrepLvlIdx = 0;
+      g_bullLeadLvlIdx = 0; g_bearLeadLvlIdx = 0;
       start = minBars;
    }
    else
       start = MathMax(prev_calculated - 1, minBars);
+
+   datetime cutoff = 0;
+   if(InpDisplayHours > 0 && rates_total > 0)
+      cutoff = time[rates_total - 1] - InpDisplayHours * 3600;
 
    for(int i = start; i < rates_total; i++)
    {
       int belowCount = 0, aboveCount = 0;
       bool completeBullPrep = false;
       bool completeBearPrep = false;
+      bool canDraw = (InpDisplayHours == 0 || time[i] >= cutoff);
 
       //=== PREPARATION PHASE ===
 
       // Bullish Preparation: close < close[N bars ago]
       if(InpBullPrep && close[i] < close[i - InpPrepCompare])
       {
-         bullPrep++;
-         if(bullPrep > InpPrepLen) bullPrep = InpPrepLen + 1;
+         g_bullPrep++;
+         if(g_bullPrep > InpPrepLen) g_bullPrep = InpPrepLen + 1;
 
-         if(bullPrep <= InpPrepLen && bullPrep >= 6)
+         if(g_bullPrep <= InpPrepLen && g_bullPrep >= 6 && canDraw)
          {
-            bool isKey = (bullPrep == InpPrepLen);
+            bool isKey = (g_bullPrep == InpPrepLen);
             DrawLabel(g_pfx + "BP" + IntegerToString(i), time[i], low[i],
-                      IntegerToString(bullPrep), InpBullPrepClr,
+                      IntegerToString(g_bullPrep), InpBullPrepClr,
                       isKey ? InpPrepFontSize + 3 : InpPrepFontSize, true, belowCount);
             belowCount++;
 
-            if(bullPrep == InpPrepLen)
+            if(g_bullPrep == InpPrepLen)
             {
                completeBullPrep = true;
                if(InpAlertPrep && i >= rates_total - 2)
@@ -157,32 +209,32 @@ int OnCalculate(const int rates_total, const int prev_calculated,
             }
          }
       }
-      else if(bullPrep > 0 && !(close[i] < close[i - InpPrepCompare]))
+      else if(g_bullPrep > 0 && !(close[i] < close[i - InpPrepCompare]))
       {
          // delete incomplete preparation labels
-         for(int d = 1; d <= bullPrep && d <= InpPrepLen; d++)
+         for(int d = 1; d <= g_bullPrep && d <= InpPrepLen; d++)
          {
-            int idx = i - bullPrep + d;
+            int idx = i - g_bullPrep + d;
             if(idx >= 0) ObjectDelete(0, g_pfx + "BP" + IntegerToString(idx));
          }
-         bullPrep = 0;
+         g_bullPrep = 0;
       }
 
       // Bearish Preparation: close > close[N bars ago]
       if(InpBearPrep && close[i] > close[i - InpPrepCompare])
       {
-         bearPrep++;
-         if(bearPrep > InpPrepLen) bearPrep = InpPrepLen + 1;
+         g_bearPrep++;
+         if(g_bearPrep > InpPrepLen) g_bearPrep = InpPrepLen + 1;
 
-         if(bearPrep <= InpPrepLen && bearPrep >= 6)
+         if(g_bearPrep <= InpPrepLen && g_bearPrep >= 6 && canDraw)
          {
-            bool isKey = (bearPrep == InpPrepLen);
+            bool isKey = (g_bearPrep == InpPrepLen);
             DrawLabel(g_pfx + "SP" + IntegerToString(i), time[i], high[i],
-                      IntegerToString(bearPrep), InpBearPrepClr,
+                      IntegerToString(g_bearPrep), InpBearPrepClr,
                       isKey ? InpPrepFontSize + 3 : InpPrepFontSize, false, aboveCount);
             aboveCount++;
 
-            if(bearPrep == InpPrepLen)
+            if(g_bearPrep == InpPrepLen)
             {
                completeBearPrep = true;
                if(InpAlertPrep && i >= rates_total - 2)
@@ -190,40 +242,40 @@ int OnCalculate(const int rates_total, const int prev_calculated,
             }
          }
       }
-      else if(bearPrep > 0 && !(close[i] > close[i - InpPrepCompare]))
+      else if(g_bearPrep > 0 && !(close[i] > close[i - InpPrepCompare]))
       {
-         for(int d = 1; d <= bearPrep && d <= InpPrepLen; d++)
+         for(int d = 1; d <= g_bearPrep && d <= InpPrepLen; d++)
          {
-            int idx = i - bearPrep + d;
+            int idx = i - g_bearPrep + d;
             if(idx >= 0) ObjectDelete(0, g_pfx + "SP" + IntegerToString(idx));
          }
-         bearPrep = 0;
+         g_bearPrep = 0;
       }
 
       // Reset opposite on new count
-      if(bullPrep == 1) bearPrep = 0;
-      if(bearPrep == 1) bullPrep = 0;
+      if(g_bullPrep == 1) g_bearPrep = 0;
+      if(g_bearPrep == 1) g_bullPrep = 0;
 
       //=== PREPARATION LEVELS ===
       if(InpShowPrepLvl)
       {
          if(completeBullPrep)
          {
-            bullPrepLvlStart = time[i];
-            bullPrepLvlPrice = low[i];
-            bullPrepLvlIdx++;
+            g_bullPrepLvlStart = time[i];
+            g_bullPrepLvlPrice = low[i];
+            g_bullPrepLvlIdx++;
          }
-         if(bullPrepLvlStart > 0)
-            DrawLevel(g_pfx + "BPL" + IntegerToString(bullPrepLvlIdx), bullPrepLvlStart, time[i], bullPrepLvlPrice, InpBullPrepClr);
+         if(g_bullPrepLvlStart > 0)
+            DrawLevel(g_pfx + "BPL" + IntegerToString(g_bullPrepLvlIdx), g_bullPrepLvlStart, time[i], g_bullPrepLvlPrice, InpBullPrepClr);
 
          if(completeBearPrep)
          {
-            bearPrepLvlStart = time[i];
-            bearPrepLvlPrice = high[i];
-            bearPrepLvlIdx++;
+            g_bearPrepLvlStart = time[i];
+            g_bearPrepLvlPrice = high[i];
+            g_bearPrepLvlIdx++;
          }
-         if(bearPrepLvlStart > 0)
-            DrawLevel(g_pfx + "SPL" + IntegerToString(bearPrepLvlIdx), bearPrepLvlStart, time[i], bearPrepLvlPrice, InpBearPrepClr);
+         if(g_bearPrepLvlStart > 0)
+            DrawLevel(g_pfx + "SPL" + IntegerToString(g_bearPrepLvlIdx), g_bearPrepLvlStart, time[i], g_bearPrepLvlPrice, InpBearPrepClr);
       }
 
       //=== LEAD-UP PHASE ===
@@ -231,56 +283,56 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       // Start lead-up on preparation completion
       if(completeBullPrep && InpBullLead)
       {
-         bullLeadActive = true;
-         bullLead = 0;
+         g_bullLeadActive = true;
+         g_bullLead = 0;
       }
       if(completeBearPrep && InpBearLead)
       {
-         bearLeadActive = true;
-         bearLead = 0;
+         g_bearLeadActive = true;
+         g_bearLead = 0;
       }
 
       // Cancellation: opposite preparation completes
       if(InpCancellation)
       {
-         if(completeBearPrep && bullLeadActive)
+         if(completeBearPrep && g_bullLeadActive)
          {
-            bullLeadActive = false;
-            bullLead = 0;
+            g_bullLeadActive = false;
+            g_bullLead = 0;
          }
-         if(completeBullPrep && bearLeadActive)
+         if(completeBullPrep && g_bearLeadActive)
          {
-            bearLeadActive = false;
-            bearLead = 0;
+            g_bearLeadActive = false;
+            g_bearLead = 0;
          }
       }
 
       // Bullish Lead-Up: close <= low[N bars ago]
-      if(bullLeadActive && i >= InpLeadCompare)
+      if(g_bullLeadActive && i >= InpLeadCompare)
       {
          if(close[i] <= low[i - InpLeadCompare])
          {
-            bullLead++;
-            if(bullLead <= InpLeadLen)
+            g_bullLead++;
+            if(g_bullLead <= InpLeadLen && g_bullLead >= 6 && canDraw)
             {
-               bool isComplete = (bullLead == InpLeadLen);
+               bool isComplete = (g_bullLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
                DrawLabel(g_pfx + "BL" + IntegerToString(i), time[i], low[i],
-                         IntegerToString(bullLead), InpBullLeadClr, fs, true, belowCount);
+                         IntegerToString(g_bullLead), InpBullLeadClr, fs, true, belowCount);
                belowCount++;
 
                if(isComplete)
                {
-                  bullLeadActive = false;
-                  bullLead = 0;
+                  g_bullLeadActive = false;
+                  g_bullLead = 0;
                   if(InpAlertLead && i >= rates_total - 2)
                      Alert("Sequencer: Bullish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
 
                   if(InpShowLeadLvl)
                   {
-                     bullLeadLvlStart = time[i];
-                     bullLeadLvlPrice = low[i];
-                     bullLeadLvlIdx++;
+                     g_bullLeadLvlStart = time[i];
+                     g_bullLeadLvlPrice = low[i];
+                     g_bullLeadLvlIdx++;
                   }
                }
             }
@@ -288,31 +340,31 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       }
 
       // Bearish Lead-Up: close >= high[N bars ago]
-      if(bearLeadActive && i >= InpLeadCompare)
+      if(g_bearLeadActive && i >= InpLeadCompare)
       {
          if(close[i] >= high[i - InpLeadCompare])
          {
-            bearLead++;
-            if(bearLead <= InpLeadLen)
+            g_bearLead++;
+            if(g_bearLead <= InpLeadLen && g_bearLead >= 6 && canDraw)
             {
-               bool isComplete = (bearLead == InpLeadLen);
+               bool isComplete = (g_bearLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
                DrawLabel(g_pfx + "SL" + IntegerToString(i), time[i], high[i],
-                         IntegerToString(bearLead), InpBearLeadClr, fs, false, aboveCount);
+                         IntegerToString(g_bearLead), InpBearLeadClr, fs, false, aboveCount);
                aboveCount++;
 
                if(isComplete)
                {
-                  bearLeadActive = false;
-                  bearLead = 0;
+                  g_bearLeadActive = false;
+                  g_bearLead = 0;
                   if(InpAlertLead && i >= rates_total - 2)
                      Alert("Sequencer: Bearish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
 
                   if(InpShowLeadLvl)
                   {
-                     bearLeadLvlStart = time[i];
-                     bearLeadLvlPrice = high[i];
-                     bearLeadLvlIdx++;
+                     g_bearLeadLvlStart = time[i];
+                     g_bearLeadLvlPrice = high[i];
+                     g_bearLeadLvlIdx++;
                   }
                }
             }
@@ -322,10 +374,10 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       //=== LEAD-UP LEVELS ===
       if(InpShowLeadLvl)
       {
-         if(bullLeadLvlStart > 0)
-            DrawLevel(g_pfx + "BLL" + IntegerToString(bullLeadLvlIdx), bullLeadLvlStart, time[i], bullLeadLvlPrice, InpBullLeadClr);
-         if(bearLeadLvlStart > 0)
-            DrawLevel(g_pfx + "SLL" + IntegerToString(bearLeadLvlIdx), bearLeadLvlStart, time[i], bearLeadLvlPrice, InpBearLeadClr);
+         if(g_bullLeadLvlStart > 0)
+            DrawLevel(g_pfx + "BLL" + IntegerToString(g_bullLeadLvlIdx), g_bullLeadLvlStart, time[i], g_bullLeadLvlPrice, InpBullLeadClr);
+         if(g_bearLeadLvlStart > 0)
+            DrawLevel(g_pfx + "SLL" + IntegerToString(g_bearLeadLvlIdx), g_bearLeadLvlStart, time[i], g_bearLeadLvlPrice, InpBearLeadClr);
       }
    }
 
