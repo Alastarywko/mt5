@@ -220,20 +220,6 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       {
          completeBullPrep = true;
          bool trendOk = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] > emaVal[i];
-         if(canDraw && trendOk)
-         {
-            string aNm = g_pfx + "BA" + IntegerToString(i);
-            if(ObjectFind(0, aNm) < 0)
-            {
-               ObjectCreate(0, aNm, OBJ_TEXT, 0, time[i], low[i] - _Point * 160);
-               ObjectSetString(0, aNm, OBJPROP_TEXT, "▲");
-               ObjectSetString(0, aNm, OBJPROP_FONT, "Arial");
-               ObjectSetInteger(0, aNm, OBJPROP_FONTSIZE, 8);
-               ObjectSetInteger(0, aNm, OBJPROP_COLOR, InpBullPrepClr);
-               ObjectSetInteger(0, aNm, OBJPROP_ANCHOR, ANCHOR_CENTER);
-               ObjectSetInteger(0, aNm, OBJPROP_SELECTABLE, false);
-            }
-         }
          if(InpAlertPrep && trendOk && i >= rates_total - 2)
             Alert("Sequencer: Bullish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
       }
@@ -263,20 +249,6 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       {
          completeBearPrep = true;
          bool trendOk = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] < emaVal[i];
-         if(canDraw && trendOk)
-         {
-            string aNm = g_pfx + "SA" + IntegerToString(i);
-            if(ObjectFind(0, aNm) < 0)
-            {
-               ObjectCreate(0, aNm, OBJ_TEXT, 0, time[i], high[i] + _Point * 160);
-               ObjectSetString(0, aNm, OBJPROP_TEXT, "▼");
-               ObjectSetString(0, aNm, OBJPROP_FONT, "Arial");
-               ObjectSetInteger(0, aNm, OBJPROP_FONTSIZE, 8);
-               ObjectSetInteger(0, aNm, OBJPROP_COLOR, InpBearPrepClr);
-               ObjectSetInteger(0, aNm, OBJPROP_ANCHOR, ANCHOR_CENTER);
-               ObjectSetInteger(0, aNm, OBJPROP_SELECTABLE, false);
-            }
-         }
          if(InpAlertPrep && trendOk && i >= rates_total - 2)
             Alert("Sequencer: Bearish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
       }
@@ -377,22 +349,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                   g_bullLeadActive = false;
                   g_bullLead = 0;
                   bool trendOkL = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] > emaVal[i];
-                  if(trendOkL)
-                  {
-                  string aNm2 = g_pfx + "BLA" + IntegerToString(i);
-                  if(ObjectFind(0, aNm2) < 0)
-                  {
-                     ObjectCreate(0, aNm2, OBJ_TEXT, 0, time[i], low[i] - _Point * 160);
-                     ObjectSetString(0, aNm2, OBJPROP_TEXT, "▲");
-                     ObjectSetString(0, aNm2, OBJPROP_FONT, "Arial");
-                     ObjectSetInteger(0, aNm2, OBJPROP_FONTSIZE, 8);
-                     ObjectSetInteger(0, aNm2, OBJPROP_COLOR, InpBullLeadClr);
-                     ObjectSetInteger(0, aNm2, OBJPROP_ANCHOR, ANCHOR_CENTER);
-                     ObjectSetInteger(0, aNm2, OBJPROP_SELECTABLE, false);
-                  }
                   if(InpAlertLead && trendOkL && i >= rates_total - 2)
                      Alert("Sequencer: Bullish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
-                  } // end trendOkL
 
                   if(InpShowLeadLvl)
                   {
@@ -428,22 +386,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                   g_bearLeadActive = false;
                   g_bearLead = 0;
                   bool trendOkL = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] < emaVal[i];
-                  if(trendOkL)
-                  {
-                  string aNm2 = g_pfx + "SLA" + IntegerToString(i);
-                  if(ObjectFind(0, aNm2) < 0)
-                  {
-                     ObjectCreate(0, aNm2, OBJ_TEXT, 0, time[i], high[i] + _Point * 160);
-                     ObjectSetString(0, aNm2, OBJPROP_TEXT, "▼");
-                     ObjectSetString(0, aNm2, OBJPROP_FONT, "Arial");
-                     ObjectSetInteger(0, aNm2, OBJPROP_FONTSIZE, 8);
-                     ObjectSetInteger(0, aNm2, OBJPROP_COLOR, InpBearLeadClr);
-                     ObjectSetInteger(0, aNm2, OBJPROP_ANCHOR, ANCHOR_CENTER);
-                     ObjectSetInteger(0, aNm2, OBJPROP_SELECTABLE, false);
-                  }
                   if(InpAlertLead && trendOkL && i >= rates_total - 2)
                      Alert("Sequencer: Bearish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
-                  } // end trendOkL
 
                   if(InpShowLeadLvl)
                   {
