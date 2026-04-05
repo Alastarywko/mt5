@@ -48,6 +48,14 @@ input bool   InpAlertLead    = false;    // Alert on Lead-Up Complete (13)
 input bool   InpPreAlert     = true;     // Pre-alert 10s before 9/13
 input int    InpPreAlertSec  = 10;       // Pre-alert seconds before bar close
 
+//═══════════════════════════════════════════════════════════════
+// TREND FILTER
+//═══════════════════════════════════════════════════════════════
+input bool   InpTrendFilter  = false;    // ── Trend: EMA filter (off by default)
+input int    InpTrendEMA     = 50;       // ── Trend: EMA period
+
+int hEMA = INVALID_HANDLE;
+
 string g_pfx = "TD2_";
 datetime g_preAlertBar = 0;
 int g_bullPrep = 0, g_bearPrep = 0;
@@ -61,6 +69,7 @@ int OnInit()
 {
    IndicatorSetString(INDICATOR_SHORTNAME, "Sequencer");
    EventSetTimer(1);
+   if(InpTrendFilter) hEMA = iMA(_Symbol, _Period, InpTrendEMA, 0, MODE_EMA, PRICE_CLOSE);
    return(INIT_SUCCEEDED);
 }
 
@@ -69,6 +78,7 @@ void OnDeinit(const int reason)
 {
    EventKillTimer();
    ObjectsDeleteAll(0, g_pfx);
+   if(hEMA != INVALID_HANDLE) IndicatorRelease(hEMA);
 }
 
 //+------------------------------------------------------------------+
@@ -162,6 +172,10 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    static datetime g_bullLeadLvlStart = 0, g_bearLeadLvlStart = 0;
    static double   g_bullLeadLvlPrice = 0, g_bearLeadLvlPrice = 0;
 
+   double emaVal[];
+   if(InpTrendFilter && hEMA != INVALID_HANDLE)
+      CopyBuffer(hEMA, 0, 0, rates_total, emaVal);
+
    int start;
    if(prev_calculated == 0)
    {
@@ -205,7 +219,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(g_bullPrep == InpPrepLen)
       {
          completeBullPrep = true;
-         if(canDraw)
+         bool trendOk = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] > emaVal[i];
+         if(canDraw && trendOk)
          {
             string aNm = g_pfx + "BA" + IntegerToString(i);
             if(ObjectFind(0, aNm) < 0)
@@ -219,7 +234,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                ObjectSetInteger(0, aNm, OBJPROP_SELECTABLE, false);
             }
          }
-         if(InpAlertPrep && i >= rates_total - 2)
+         if(InpAlertPrep && trendOk && i >= rates_total - 2)
             Alert("Sequencer: Bullish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
       }
       // delete incomplete labels on reset
@@ -247,7 +262,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(g_bearPrep == InpPrepLen)
       {
          completeBearPrep = true;
-         if(canDraw)
+         bool trendOk = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] < emaVal[i];
+         if(canDraw && trendOk)
          {
             string aNm = g_pfx + "SA" + IntegerToString(i);
             if(ObjectFind(0, aNm) < 0)
@@ -261,7 +277,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                ObjectSetInteger(0, aNm, OBJPROP_SELECTABLE, false);
             }
          }
-         if(InpAlertPrep && i >= rates_total - 2)
+         if(InpAlertPrep && trendOk && i >= rates_total - 2)
             Alert("Sequencer: Bearish Prep ", InpPrepLen, " | ", _Symbol, " ", EnumToString(_Period));
       }
       // delete incomplete labels on reset
@@ -360,6 +376,9 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                   g_bullLeadBarCnt = 0;
                   g_bullLeadActive = false;
                   g_bullLead = 0;
+                  bool trendOkL = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] > emaVal[i];
+                  if(trendOkL)
+                  {
                   string aNm2 = g_pfx + "BLA" + IntegerToString(i);
                   if(ObjectFind(0, aNm2) < 0)
                   {
@@ -371,8 +390,9 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                      ObjectSetInteger(0, aNm2, OBJPROP_ANCHOR, ANCHOR_CENTER);
                      ObjectSetInteger(0, aNm2, OBJPROP_SELECTABLE, false);
                   }
-                  if(InpAlertLead && i >= rates_total - 2)
+                  if(InpAlertLead && trendOkL && i >= rates_total - 2)
                      Alert("Sequencer: Bullish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
+                  } // end trendOkL
 
                   if(InpShowLeadLvl)
                   {
@@ -407,6 +427,9 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                   g_bearLeadBarCnt = 0;
                   g_bearLeadActive = false;
                   g_bearLead = 0;
+                  bool trendOkL = !InpTrendFilter || ArraySize(emaVal) <= i || close[i] < emaVal[i];
+                  if(trendOkL)
+                  {
                   string aNm2 = g_pfx + "SLA" + IntegerToString(i);
                   if(ObjectFind(0, aNm2) < 0)
                   {
@@ -418,8 +441,9 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                      ObjectSetInteger(0, aNm2, OBJPROP_ANCHOR, ANCHOR_CENTER);
                      ObjectSetInteger(0, aNm2, OBJPROP_SELECTABLE, false);
                   }
-                  if(InpAlertLead && i >= rates_total - 2)
+                  if(InpAlertLead && trendOkL && i >= rates_total - 2)
                      Alert("Sequencer: Bearish Lead-Up ", InpLeadLen, " | ", _Symbol, " ", EnumToString(_Period));
+                  } // end trendOkL
 
                   if(InpShowLeadLvl)
                   {
