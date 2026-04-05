@@ -208,7 +208,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       int prevBullPrep = g_bullPrep;
       g_bullPrep = (InpBullPrep && close[i] < close[i - InpPrepCompare]) ? g_bullPrep + 1 : 0;
 
-      if(g_bullPrep >= 6 && g_bullPrep <= InpPrepLen && canDraw)
+      if(g_bullPrep >= 7 && g_bullPrep <= InpPrepLen && canDraw)
       {
          bool isKey = (g_bullPrep == InpPrepLen);
          DrawLabel(g_pfx + "BP" + IntegerToString(i), time[i], low[i],
@@ -237,7 +237,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       int prevBearPrep = g_bearPrep;
       g_bearPrep = (InpBearPrep && close[i] > close[i - InpPrepCompare]) ? g_bearPrep + 1 : 0;
 
-      if(g_bearPrep >= 6 && g_bearPrep <= InpPrepLen && canDraw)
+      if(g_bearPrep >= 7 && g_bearPrep <= InpPrepLen && canDraw)
       {
          bool isKey = (g_bearPrep == InpPrepLen);
          DrawLabel(g_pfx + "SP" + IntegerToString(i), time[i], high[i],
@@ -332,7 +332,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
          if(close[i] < low[i - InpLeadCompare])
          {
             g_bullLead++;
-            if(g_bullLead >= 6 && g_bullLead <= InpLeadLen && canDraw)
+            if(g_bullLead >= 7 && g_bullLead <= InpLeadLen && canDraw)
             {
                bool isComplete = (g_bullLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
@@ -369,7 +369,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
          if(close[i] > high[i - InpLeadCompare])
          {
             g_bearLead++;
-            if(g_bearLead >= 6 && g_bearLead <= InpLeadLen && canDraw)
+            if(g_bearLead >= 7 && g_bearLead <= InpLeadLen && canDraw)
             {
                bool isComplete = (g_bearLead == InpLeadLen);
                int fs = isComplete ? InpLeadFontSize + 5 : InpLeadFontSize;
