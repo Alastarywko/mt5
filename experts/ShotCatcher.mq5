@@ -13,6 +13,9 @@ input int    InpOffset     = 200;    // Відступ від ціни (пунк
 input int    InpSL         = 70;     // Stop Loss (пунктів)
 input int    InpTP         = 0;      // Take Profit (пунктів, 0 = без)
 input int    InpInterval   = 3;      // Інтервал оновлення (секунд)
+input bool   InpTrailing   = false;  // Трейлінг стоп: вкл/викл
+input int    InpTrailAct   = 100;    // Трейлінг: активація (пунктів прибутку)
+input int    InpTrailStep  = 5;      // Трейлінг: крок (пунктів)
 input ulong  InpMagic      = 303030; // Magic number
 
 CTrade trade;
@@ -97,5 +100,46 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   if(InpTrailing)
+      ManageTrailing();
+}
+
+//+------------------------------------------------------------------+
+void ManageTrailing()
+{
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(PositionGetSymbol(i) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      long   type   = PositionGetInteger(POSITION_TYPE);
+      double openPr = PositionGetDouble(POSITION_PRICE_OPEN);
+      double curSL  = PositionGetDouble(POSITION_SL);
+      double curTP  = PositionGetDouble(POSITION_TP);
+      ulong  ticket = PositionGetInteger(POSITION_TICKET);
+      double actDist = InpTrailAct * _Point;
+      double step    = InpTrailStep * _Point;
+
+      if(type == POSITION_TYPE_BUY)
+      {
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         if(bid - openPr >= actDist)
+         {
+            double newSL = NormalizeDouble(bid - step, _Digits);
+            if(newSL > curSL + _Point)
+               trade.PositionModify(ticket, newSL, curTP);
+         }
+      }
+      else if(type == POSITION_TYPE_SELL)
+      {
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         if(openPr - ask >= actDist)
+         {
+            double newSL = NormalizeDouble(ask + step, _Digits);
+            if(curSL < _Point || newSL < curSL - _Point)
+               trade.PositionModify(ticket, newSL, curTP);
+         }
+      }
+   }
 }
 //+------------------------------------------------------------------+
