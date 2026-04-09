@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                                ManualHedger.mq5  |
-//|           Двигает Buy Stop и Sell Stop за ценой каждые 5 сек      |
+//|                                                 ShotCatcher.mq5  |
+//|           Двигает Buy Stop и Sell Stop за ценой                    |
 //+------------------------------------------------------------------+
 #property copyright "2026"
 #property version   "2.00"
@@ -12,6 +12,7 @@ input double InpLotSize    = 5.0;    // Лот
 input int    InpOffset     = 200;    // Відступ від ціни (пунктів)
 input int    InpSL         = 70;     // Stop Loss (пунктів)
 input int    InpTP         = 0;      // Take Profit (пунктів, 0 = без)
+input int    InpInterval   = 3;      // Інтервал оновлення (секунд)
 input ulong  InpMagic      = 303030; // Magic number
 
 CTrade trade;
@@ -33,8 +34,8 @@ int OnInit()
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(20);
    trade.SetTypeFilling(DetectFilling());
-   EventSetTimer(5);
-   Print("ManualHedger: started, offset=", InpOffset, " SL=", InpSL, " lot=", InpLotSize);
+   EventSetTimer(InpInterval);
+   Print("ShotCatcher: started, offset=", InpOffset, " SL=", InpSL, " lot=", InpLotSize, " interval=", InpInterval, "s");
    return(INIT_SUCCEEDED);
 }
 
@@ -63,7 +64,6 @@ void OnTimer()
    bool buyExists  = (g_buyTicket > 0 && OrderSelect(g_buyTicket) && OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP);
    bool sellExists = (g_sellTicket > 0 && OrderSelect(g_sellTicket) && OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP);
 
-   // if one triggered (disappeared), delete the other and reset both
    if(!buyExists && g_buyTicket > 0)
    {
       if(sellExists) trade.OrderDelete(g_sellTicket);
@@ -77,21 +77,19 @@ void OnTimer()
       g_sellTicket = 0;
    }
 
-   // place or move Buy Stop
    if(g_buyTicket > 0 && OrderSelect(g_buyTicket))
       trade.OrderModify(g_buyTicket, buyPrice, buySL, buyTP, 0, 0);
    else
    {
-      if(trade.BuyStop(InpLotSize, buyPrice, _Symbol, buySL, buyTP, 0, 0, "Hedger BuyStop"))
+      if(trade.BuyStop(InpLotSize, buyPrice, _Symbol, buySL, buyTP, 0, 0, "Shot BuyStop"))
          g_buyTicket = trade.ResultOrder();
    }
 
-   // place or move Sell Stop
    if(g_sellTicket > 0 && OrderSelect(g_sellTicket))
       trade.OrderModify(g_sellTicket, sellPrice, sellSL, sellTP, 0, 0);
    else
    {
-      if(trade.SellStop(InpLotSize, sellPrice, _Symbol, sellSL, sellTP, 0, 0, "Hedger SellStop"))
+      if(trade.SellStop(InpLotSize, sellPrice, _Symbol, sellSL, sellTP, 0, 0, "Shot SellStop"))
          g_sellTicket = trade.ResultOrder();
    }
 }
