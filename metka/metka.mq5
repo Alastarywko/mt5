@@ -12,22 +12,22 @@
 
 #property indicator_label1  "Buy"
 #property indicator_type1   DRAW_COLOR_ARROW
-#property indicator_color1  clrDodgerBlue,clrBlack
+#property indicator_color1  clrDodgerBlue,clrBlack,clrSienna
 #property indicator_width1  2
 
 #property indicator_label2  "Sell"
 #property indicator_type2   DRAW_COLOR_ARROW
-#property indicator_color2  clrOrangeRed,clrBlack
+#property indicator_color2  clrOrangeRed,clrBlack,clrSienna
 #property indicator_width2  2
 
 #property indicator_label3  "Strong Buy"
 #property indicator_type3   DRAW_COLOR_ARROW
-#property indicator_color3  clrLime,clrBlack
+#property indicator_color3  clrLime,clrBlack,clrSienna
 #property indicator_width3  5
 
 #property indicator_label4  "Strong Sell"
 #property indicator_type4   DRAW_COLOR_ARROW
-#property indicator_color4  clrDeepPink,clrBlack
+#property indicator_color4  clrDeepPink,clrBlack,clrSienna
 #property indicator_width4  5
 
 //═══════════════════════════════════════════════════════════════
@@ -78,6 +78,13 @@ int              InpSwingBars    = 15;            // ── Свинг: вікн
 double           InpSwingATR     = 1.5;           // ── Свинг: толеранс в ATR
 
 //═══════════════════════════════════════════════════════════════
+// ФІЛЬТР ЗА ТРЕНДОМ (тільки в напрямку тренду або у флеті)
+//═══════════════════════════════════════════════════════════════
+input bool             InpTrendOnly   = false;          // ── За трендом: вкл/викл
+input int              InpTrendEMAPer = 50;             // ── За трендом: EMA період
+input double           InpTrendFlat   = 0.3;            // ── За трендом: флет зона (ATR множник)
+
+//═══════════════════════════════════════════════════════════════
 // АЛЕРТИ
 //═══════════════════════════════════════════════════════════════
 int              InpPreSignalSec = 10;            // Попередження за N секунд
@@ -90,6 +97,7 @@ bool             InpPush        = false;          // Push-повідомленн
 input bool             InpShowStats   = false;          // Панель статистики
 input int              InpStatHours   = 400;            // Період аналізу (годин)
 input int              InpStatTarget  = 100;            // Ціль (пунктів)
+input int              InpStatPullback = 1000;           // Відкат (пунктів, 0 = вимк)
 input int              InpStatPct     = 85;             // Перцентиль просадки (%)
 input int              InpStreakLen   = 3;              // Мін. довжина серії (streak)
 
@@ -840,8 +848,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    }
 
    bool sigHit[];
+   bool sigPullback[];
    ArrayResize(sigHit, sigCount);
+   ArrayResize(sigPullback, sigCount);
+   ArrayInitialize(sigPullback, false);
    double target = InpStatTarget * _Point;
+   double pullbackDist = InpStatPullback * _Point;
 
    int buyTotal = 0, buyHit = 0, buyMaxDD = 0;
    int sellTotal = 0, sellHit = 0, sellMaxDD = 0;
@@ -910,11 +922,18 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          hourBuyTotal[hr]++;
          double maxHi = entry;
          double maxHiAtHit = entry;
+         double minLoBeforeHit = entry;
          for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
          {
             if(high[b] > maxHi) maxHi = high[b];
-            if(!hit && high[b] >= entry + target) { hit = true; hitBar = b; maxHiAtHit = maxHi; }
+            if(!hit)
+            {
+               if(low[b] < minLoBeforeHit) minLoBeforeHit = low[b];
+               if(high[b] >= entry + target) { hit = true; hitBar = b; maxHiAtHit = maxHi; }
+            }
          }
+         if(hit && InpStatPullback > 0 && (entry - minLoBeforeHit) >= pullbackDist)
+            sigPullback[s] = true;
          if(hit)
          {
             double fullBuyMfe = (maxHi - entry) / _Point;
@@ -972,11 +991,18 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          hourSellTotal[hr]++;
          double minLo = entry;
          double minLoAtHit = entry;
+         double maxHiBeforeHit = entry;
          for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
          {
             if(low[b] < minLo) minLo = low[b];
-            if(!hit && low[b] <= entry - target) { hit = true; hitBar = b; minLoAtHit = minLo; }
+            if(!hit)
+            {
+               if(high[b] > maxHiBeforeHit) maxHiBeforeHit = high[b];
+               if(low[b] <= entry - target) { hit = true; hitBar = b; minLoAtHit = minLo; }
+            }
          }
+         if(hit && InpStatPullback > 0 && (maxHiBeforeHit - entry) >= pullbackDist)
+            sigPullback[s] = true;
          if(hit)
          {
             double fullSellMfe = (entry - minLo) / _Point;
@@ -1066,6 +1092,8 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    {
       if(!sigHit[s])
          SetArrowColor(sigBars[s], 1);
+      else if(sigPullback[s])
+         SetArrowColor(sigBars[s], 2);
    }
 
    if(!g_statsOn)
@@ -2306,6 +2334,32 @@ int OnCalculate(const int rates_total,
          if(SellBuf[i - j] != EMPTY_VALUE || StrongSellBuf[i - j] != EMPTY_VALUE)
             sellCool = false;
       }
+
+      // trend-only filter
+      if(InpTrendOnly)
+      {
+         double tEma = 0;
+         if(i >= InpTrendEMAPer)
+         {
+            double sum = 0;
+            for(int k = 0; k < InpTrendEMAPer; k++) sum += close[i - k];
+            tEma = sum / InpTrendEMAPer;
+         }
+         if(tEma > 0)
+         {
+            double dist = close[i] - tEma;
+            double flatZone = atr[i] * InpTrendFlat;
+            bool isFlat = MathAbs(dist) <= flatZone;
+            bool trendUp = dist > flatZone;
+            bool trendDn = dist < -flatZone;
+
+            if(trendDn && buySignal)  buySignal = false;
+            if(trendUp && sellSignal) sellSignal = false;
+         }
+      }
+
+      if(!buySignal && !sellSignal)
+         continue;
 
       double offset = _Point * 200;
 
