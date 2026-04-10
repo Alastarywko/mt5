@@ -12,22 +12,22 @@
 
 #property indicator_label1  "Buy"
 #property indicator_type1   DRAW_COLOR_ARROW
-#property indicator_color1  clrDodgerBlue,clrBlack,clrSienna
+#property indicator_color1  clrDodgerBlue,clrBlack,clrSienna,clrSilver
 #property indicator_width1  2
 
 #property indicator_label2  "Sell"
 #property indicator_type2   DRAW_COLOR_ARROW
-#property indicator_color2  clrOrangeRed,clrBlack,clrSienna
+#property indicator_color2  clrOrangeRed,clrBlack,clrSienna,clrSilver
 #property indicator_width2  2
 
 #property indicator_label3  "Strong Buy"
 #property indicator_type3   DRAW_COLOR_ARROW
-#property indicator_color3  clrLime,clrBlack,clrSienna
+#property indicator_color3  clrLime,clrBlack,clrSienna,clrSilver
 #property indicator_width3  5
 
 #property indicator_label4  "Strong Sell"
 #property indicator_type4   DRAW_COLOR_ARROW
-#property indicator_color4  clrDeepPink,clrBlack,clrSienna
+#property indicator_color4  clrDeepPink,clrBlack,clrSienna,clrSilver
 #property indicator_width4  5
 
 //═══════════════════════════════════════════════════════════════
@@ -98,8 +98,16 @@ input bool             InpShowStats   = false;          // Панель стат
 input int              InpStatHours   = 400;            // Період аналізу (годин)
 input int              InpStatTarget  = 100;            // Ціль (пунктів)
 input int              InpStatPullback = 1000;           // Відкат (пунктів, 0 = вимк)
+input int              InpLookAhead   = 1;              // Меток вперед для чорних (1=наступна)
 input int              InpStatPct     = 85;             // Перцентиль просадки (%)
 input int              InpStreakLen   = 3;              // Мін. довжина серії (streak)
+//═══════════════════════════════════════════════════════════════
+// ЛЕГЕНДА КОЛЬОРІВ
+//═══════════════════════════════════════════════════════════════
+input string InpLegend1 = "";  // ▶ Основний = профіт за 1 метку, відкат < порогу
+input string InpLegend2 = "";  // ▶ Sienna = профіт за 1 метку, відкат >= порогу
+input string InpLegend3 = "";  // ▶ Gray = профіт за N меток, відкат < порогу
+input string InpLegend4 = "";  // ▶ Чорний = не дійшла або відкат >= порогу
 
 double BuyBuf[], SellBuf[];
 double StrongBuyBuf[], StrongSellBuf[];
@@ -167,16 +175,24 @@ int OnInit()
    for(int p = 0; p < 4; p++)
    {
       PlotIndexSetDouble(p, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-      PlotIndexSetInteger(p, PLOT_COLOR_INDEXES, 2);
+      PlotIndexSetInteger(p, PLOT_COLOR_INDEXES, 4);
    }
    PlotIndexSetInteger(0, PLOT_LINE_COLOR, 0, clrDodgerBlue);
    PlotIndexSetInteger(0, PLOT_LINE_COLOR, 1, clrBlack);
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, 2, clrSienna);
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, 3, clrGray);
    PlotIndexSetInteger(1, PLOT_LINE_COLOR, 0, clrOrangeRed);
    PlotIndexSetInteger(1, PLOT_LINE_COLOR, 1, clrBlack);
+   PlotIndexSetInteger(1, PLOT_LINE_COLOR, 2, clrSienna);
+   PlotIndexSetInteger(1, PLOT_LINE_COLOR, 3, clrGray);
    PlotIndexSetInteger(2, PLOT_LINE_COLOR, 0, clrLime);
    PlotIndexSetInteger(2, PLOT_LINE_COLOR, 1, clrBlack);
+   PlotIndexSetInteger(2, PLOT_LINE_COLOR, 2, clrSienna);
+   PlotIndexSetInteger(2, PLOT_LINE_COLOR, 3, clrGray);
    PlotIndexSetInteger(3, PLOT_LINE_COLOR, 0, clrDeepPink);
    PlotIndexSetInteger(3, PLOT_LINE_COLOR, 1, clrBlack);
+   PlotIndexSetInteger(3, PLOT_LINE_COLOR, 2, clrSienna);
+   PlotIndexSetInteger(3, PLOT_LINE_COLOR, 3, clrGray);
 
    if(InpHTF == PERIOD_CURRENT || InpHTF <= _Period)
       htfPeriod = AutoHTF(_Period);
@@ -849,9 +865,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    bool sigHit[];
    bool sigPullback[];
+   bool sigSilver[];
    ArrayResize(sigHit, sigCount);
    ArrayResize(sigPullback, sigCount);
+   ArrayResize(sigSilver, sigCount);
    ArrayInitialize(sigPullback, false);
+   ArrayInitialize(sigSilver, false);
    double target = InpStatTarget * _Point;
    double pullbackDist = InpStatPullback * _Point;
 
@@ -1053,6 +1072,39 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          optCount++;
       }
       sigHit[s] = hit;
+
+      // Silver check: for misses, check extended range (InpLookAhead signals ahead)
+      if(!hit && InpLookAhead > 1)
+      {
+         int extIdx = s - InpLookAhead;
+         if(extIdx < 0) extIdx = 0;
+         int extBar = (s > 0) ? sigBars[extIdx] : rates_total - 1;
+
+         if(sigDirs[s] == 1)
+         {
+            double extMinLo = entry;
+            bool extHit = false;
+            for(int b = bar + 1; b <= extBar && b < rates_total; b++)
+            {
+               if(low[b] < extMinLo) extMinLo = low[b];
+               if(high[b] >= entry + target) { extHit = true; break; }
+            }
+            if(extHit && (InpStatPullback == 0 || (entry - extMinLo) < pullbackDist))
+               sigSilver[s] = true;
+         }
+         else
+         {
+            double extMaxHi = entry;
+            bool extHit = false;
+            for(int b = bar + 1; b <= extBar && b < rates_total; b++)
+            {
+               if(high[b] > extMaxHi) extMaxHi = high[b];
+               if(low[b] <= entry - target) { extHit = true; break; }
+            }
+            if(extHit && (InpStatPullback == 0 || (extMaxHi - entry) < pullbackDist))
+               sigSilver[s] = true;
+         }
+      }
    }
 
 
@@ -1091,7 +1143,12 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    for(int s = 1; s < sigCount; s++)
    {
       if(!sigHit[s])
-         SetArrowColor(sigBars[s], 1);
+      {
+         if(sigSilver[s])
+            SetArrowColor(sigBars[s], 3);
+         else
+            SetArrowColor(sigBars[s], 1);
+      }
       else if(sigPullback[s])
          SetArrowColor(sigBars[s], 2);
    }
