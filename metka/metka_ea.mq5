@@ -93,13 +93,10 @@ int OnInit()
    hIndicator = FindChartIndicator();
 
    if(hIndicator == INVALID_HANDLE)
-   {
-      Print("metka_ea: індикатор Metka не знайдено на графіку! Додайте metka на графік.");
-      return(INIT_FAILED);
-   }
-
-   Print("metka_ea: індикатор знайдено, SL=", InpSL, " TP=", InpTP,
-         " pending=", InpPending, " trailing=", InpTrailing);
+      Print("metka_ea: індикатор Metka не знайдено, чекаємо...");
+   else
+      Print("metka_ea: індикатор знайдено, SL=", InpSL, " TP=", InpTP,
+            " pending=", InpPending, " trailing=", InpTrailing);
    datetime savedTime = (datetime)GlobalVariableGet("MetkaEA_LastSigTime");
    datetime foundTime = FindLastExistingSignalTime();
    lastSignalTime = MathMax(savedTime, foundTime);
@@ -118,6 +115,14 @@ void OnTick()
 {
    if(InpTrailing)
       ManageTrailing();
+
+   if(hIndicator == INVALID_HANDLE)
+   {
+      hIndicator = FindChartIndicator();
+      if(hIndicator != INVALID_HANDLE)
+         Print("metka_ea: індикатор знайдено");
+      return;
+   }
 
    if(!GlobalVariableCheck("MetkaSignal_Time"))
       return;
