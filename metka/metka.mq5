@@ -240,6 +240,7 @@ void OnDeinit(const int reason)
    ObjectDelete(0, "MtkCount1");
    ObjectDelete(0, "MtkCount2");
    ObjectDelete(0, "MtkPL");
+   ObjectDelete(0, "MtkPLSL");
    ObjectDelete(0, g_pageBtnMain);
    ObjectDelete(0, g_pageBtnMove);
    ObjectDelete(0, g_pageBtnDD);
@@ -869,11 +870,14 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
    bool sigHit[];
    bool sigPullback[];
    bool sigSilver[];
+   double sigMaxAdverse[]; // max adverse excursion for each signal
    ArrayResize(sigHit, sigCount);
    ArrayResize(sigPullback, sigCount);
    ArrayResize(sigSilver, sigCount);
+   ArrayResize(sigMaxAdverse, sigCount);
    ArrayInitialize(sigPullback, false);
    ArrayInitialize(sigSilver, false);
+   ArrayInitialize(sigMaxAdverse, 0);
    double target = InpStatTarget * _Point;
    double pullbackDist = InpStatPullback * _Point;
 
@@ -1076,6 +1080,22 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       }
       sigHit[s] = hit;
 
+      // compute max adverse excursion for this signal (for P&L/SL calculation)
+      if(sigDirs[s] == 1)
+      {
+         double minLoAll = entry;
+         for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
+            if(low[b] < minLoAll) minLoAll = low[b];
+         sigMaxAdverse[s] = (entry - minLoAll) / _Point;
+      }
+      else
+      {
+         double maxHiAll = entry;
+         for(int b = bar + 1; b <= nextSigBar && b < rates_total; b++)
+            if(high[b] > maxHiAll) maxHiAll = high[b];
+         sigMaxAdverse[s] = (maxHiAll - entry) / _Point;
+      }
+
       // Silver check: for misses, check extended range (InpLookAhead signals ahead)
       if(!hit && InpLookAhead > 1)
       {
@@ -1205,7 +1225,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nm2, OBJPROP_COLOR, clrBlack);
       ObjectSetInteger(0, nm2, OBJPROP_SELECTABLE, false);
 
-      // line 3: P&L
+      // line 3: P&L (no SL cap)
       string nm3 = "MtkPL";
       if(ObjectFind(0, nm3) < 0) ObjectCreate(0, nm3, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
@@ -1216,6 +1236,40 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nm3, OBJPROP_FONTSIZE, 10);
       ObjectSetInteger(0, nm3, OBJPROP_COLOR, clrBlack);
       ObjectSetInteger(0, nm3, OBJPROP_SELECTABLE, false);
+
+      // line 4: P&L with SL cap (InpStatPullback)
+      double totalPLSL = 0;
+      if(InpStatPullback > 0)
+      {
+         for(int s = 1; s < sigCount; s++)
+         {
+            int bar = sigBars[s];
+            if(bar + 1 >= rates_total) continue;
+            if(sigHit[s] || sigSilver[s])
+            {
+               totalPLSL += InpStatTarget;
+            }
+            else
+            {
+               // if max adverse during signal's life exceeded SL → count full SL
+               double mae = sigMaxAdverse[s];
+               double loss = mae >= InpStatPullback ? InpStatPullback : mae;
+               totalPLSL -= loss;
+            }
+         }
+      }
+      string nm4 = "MtkPLSL";
+      if(ObjectFind(0, nm4) < 0) ObjectCreate(0, nm4, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, nm4, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nm4, OBJPROP_XDISTANCE, 15);
+      ObjectSetInteger(0, nm4, OBJPROP_YDISTANCE, 81);
+      ObjectSetString(0, nm4, OBJPROP_TEXT, InpStatPullback > 0
+         ? StringFormat("P&L/SL: %+.0f pt", totalPLSL)
+         : "P&L/SL: --");
+      ObjectSetString(0, nm4, OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, nm4, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, nm4, OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, nm4, OBJPROP_SELECTABLE, false);
    }
 
    if(!g_statsOn)
