@@ -237,6 +237,9 @@ void OnDeinit(const int reason)
    ObjectDelete(0, "MetkaDotDn");
    ObjectsDeleteAll(0, g_statPfx);
    ObjectsDeleteAll(0, g_curPfx);
+   ObjectDelete(0, "MtkCount1");
+   ObjectDelete(0, "MtkCount2");
+   ObjectDelete(0, "MtkPL");
    ObjectDelete(0, g_pageBtnMain);
    ObjectDelete(0, g_pageBtnMove);
    ObjectDelete(0, g_pageBtnDD);
@@ -1151,6 +1154,68 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       }
       else if(sigPullback[s])
          SetArrowColor(sigBars[s], 2);
+   }
+
+   //--- counters + P&L in top-left corner
+   {
+      int cntProfit = 0, cntLoss = 0;
+      double totalPL = 0;
+      for(int s = 1; s < sigCount; s++)
+      {
+         int bar = sigBars[s];
+         if(bar + 1 >= rates_total) continue;
+
+         if(sigHit[s] || sigSilver[s])
+         {
+            cntProfit++;
+            totalPL += InpStatTarget;
+         }
+         else
+         {
+            cntLoss++;
+            double entry = open[bar + 1];
+            double curPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            double loss = sigDirs[s] == 1 ? (entry - curPrice) / _Point
+                                          : (curPrice - entry) / _Point;
+            totalPL -= loss;
+         }
+      }
+
+      // line 1: profit count
+      string nm1 = "MtkCount1";
+      if(ObjectFind(0, nm1) < 0) ObjectCreate(0, nm1, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, nm1, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nm1, OBJPROP_XDISTANCE, 15);
+      ObjectSetInteger(0, nm1, OBJPROP_YDISTANCE, 30);
+      ObjectSetString(0, nm1, OBJPROP_TEXT, StringFormat("Profit: %d", cntProfit));
+      ObjectSetString(0, nm1, OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, nm1, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, nm1, OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, nm1, OBJPROP_SELECTABLE, false);
+
+      // line 2: loss count
+      string nm2 = "MtkCount2";
+      if(ObjectFind(0, nm2) < 0) ObjectCreate(0, nm2, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, nm2, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nm2, OBJPROP_XDISTANCE, 15);
+      ObjectSetInteger(0, nm2, OBJPROP_YDISTANCE, 47);
+      ObjectSetString(0, nm2, OBJPROP_TEXT, StringFormat("Loss:   %d", cntLoss));
+      ObjectSetString(0, nm2, OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, nm2, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, nm2, OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, nm2, OBJPROP_SELECTABLE, false);
+
+      // line 3: P&L
+      string nm3 = "MtkPL";
+      if(ObjectFind(0, nm3) < 0) ObjectCreate(0, nm3, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, nm3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nm3, OBJPROP_XDISTANCE, 15);
+      ObjectSetInteger(0, nm3, OBJPROP_YDISTANCE, 64);
+      ObjectSetString(0, nm3, OBJPROP_TEXT, StringFormat("P&L:    %+.0f pt", totalPL));
+      ObjectSetString(0, nm3, OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, nm3, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, nm3, OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, nm3, OBJPROP_SELECTABLE, false);
    }
 
    if(!g_statsOn)
