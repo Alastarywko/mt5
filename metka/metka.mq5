@@ -99,7 +99,7 @@ input bool             InpShowStats   = false;          // Панель стат
 input int              InpStatHours   = 400;            // Період аналізу (годин)
 input int              InpStatTarget  = 100;            // Ціль (пунктів)
 input int              InpStatPullback = 1500;           // Відкат (пунктів, 0 = вимк)
-input int              InpLookAhead   = 1;              // Меток вперед для чорних (1=наступна)
+input int              InpLookAhead   = 1500;           // Меток вперед для чорних (1=наступна)
 input double           InpDeposit     = 5000.0;         // Початковий депозит ($)
 input double           InpLot         = 1.0;            // Лот (1 лот = $1 за 100 пунктів)
 input int              InpStatPct     = 85;             // Перцентиль просадки (%)
