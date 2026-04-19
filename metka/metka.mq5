@@ -239,13 +239,6 @@ void OnDeinit(const int reason)
    ObjectDelete(0, "MetkaDotDn");
    ObjectsDeleteAll(0, g_statPfx);
    ObjectsDeleteAll(0, g_curPfx);
-   ObjectDelete(0, "MtkCount1");
-   ObjectDelete(0, "MtkCount2");
-   ObjectDelete(0, "MtkPL");
-   ObjectDelete(0, "MtkPLSL");
-   ObjectDelete(0, "MtkUSD1");
-   ObjectDelete(0, "MtkUSD2");
-   ObjectDelete(0, "MtkDD");
    ObjectDelete(0, g_pageBtnMain);
    ObjectDelete(0, g_pageBtnMove);
    ObjectDelete(0, g_pageBtnDD);
@@ -1216,7 +1209,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       }
 
       // line 1: profit count
-      string nm1 = "MtkCount1";
+      string nm1 = g_statPfx + "Count1";
       ObjectDelete(0, nm1); ObjectCreate(0, nm1, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm1, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm1, OBJPROP_XDISTANCE, 15);
@@ -1228,7 +1221,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nm1, OBJPROP_SELECTABLE, false);
 
       // line 2: loss count
-      string nm2 = "MtkCount2";
+      string nm2 = g_statPfx + "Count2";
       ObjectDelete(0, nm2); ObjectCreate(0, nm2, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm2, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm2, OBJPROP_XDISTANCE, 15);
@@ -1240,7 +1233,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nm2, OBJPROP_SELECTABLE, false);
 
       // line 3: P&L (no SL cap)
-      string nm3 = "MtkPL";
+      string nm3 = g_statPfx + "PL";
       ObjectDelete(0, nm3); ObjectCreate(0, nm3, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm3, OBJPROP_XDISTANCE, 15);
@@ -1267,7 +1260,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
                totalPLSL -= InpStatPullback; // black: SL hit
          }
       }
-      string nm4 = "MtkPLSL";
+      string nm4 = g_statPfx + "PLSL";
       ObjectDelete(0, nm4); ObjectCreate(0, nm4, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm4, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm4, OBJPROP_XDISTANCE, 15);
@@ -1332,7 +1325,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          }
       }
 
-      string nmD1 = "MtkUSD1";
+      string nmD1 = g_statPfx + "USD1";
       ObjectDelete(0, nmD1); ObjectCreate(0, nmD1, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nmD1, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nmD1, OBJPROP_XDISTANCE, 15);
@@ -1343,7 +1336,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nmD1, OBJPROP_COLOR, clrBlack);
       ObjectSetInteger(0, nmD1, OBJPROP_SELECTABLE, false);
 
-      string nmD2 = "MtkUSD2";
+      string nmD2 = g_statPfx + "USD2";
       ObjectDelete(0, nmD2); ObjectCreate(0, nmD2, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nmD2, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nmD2, OBJPROP_XDISTANCE, 15);
@@ -1354,7 +1347,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nmD2, OBJPROP_COLOR, clrBlack);
       ObjectSetInteger(0, nmD2, OBJPROP_SELECTABLE, false);
 
-      string nmD3 = "MtkDD";
+      string nmD3 = g_statPfx + "DD";
       ObjectDelete(0, nmD3); ObjectCreate(0, nmD3, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nmD3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nmD3, OBJPROP_XDISTANCE, 15);
