@@ -218,8 +218,7 @@ int OnInit()
       return(INIT_FAILED);
    }
 
-   IndicatorSetString(INDICATOR_SHORTNAME,
-      StringFormat("Metka v28 (%s)", EnumToString(htfPeriod)));
+   IndicatorSetString(INDICATOR_SHORTNAME, "Metka v28");
 
    lastAlertTime  = 0;
    lastDotBarTime = 0;
