@@ -82,8 +82,8 @@ double           InpSwingATR     = 1.5;           // ── Свинг: толе
 //═══════════════════════════════════════════════════════════════
 input bool             InpReverse     = false;          // РЕВЕРС: міняє BUY↔SELL
 input bool             InpTrendOnly   = false;          // ── За трендом: вкл/викл
-input int              InpTrendEMAPer = 50;             // ── За трендом: EMA період
-input double           InpTrendFlat   = 0.3;            // ── За трендом: флет зона (ATR множник)
+input int              InpTrendEMAPer = 100;            // ── За трендом: EMA період
+input double           InpTrendFlat   = 2.0;            // ── За трендом: флет зона (ATR множник)
 
 //═══════════════════════════════════════════════════════════════
 // АЛЕРТИ
@@ -98,8 +98,10 @@ bool             InpPush        = false;          // Push-повідомленн
 input bool             InpShowStats   = false;          // Панель статистики
 input int              InpStatHours   = 400;            // Період аналізу (годин)
 input int              InpStatTarget  = 100;            // Ціль (пунктів)
-input int              InpStatPullback = 1000;           // Відкат (пунктів, 0 = вимк)
+input int              InpStatPullback = 1500;           // Відкат (пунктів, 0 = вимк)
 input int              InpLookAhead   = 1;              // Меток вперед для чорних (1=наступна)
+input double           InpDeposit     = 5000.0;         // Початковий депозит ($)
+input double           InpLot         = 1.0;            // Лот (1 лот = $1 за 100 пунктів)
 input int              InpStatPct     = 85;             // Перцентиль просадки (%)
 input int              InpStreakLen   = 3;              // Мін. довжина серії (streak)
 //═══════════════════════════════════════════════════════════════
@@ -241,6 +243,9 @@ void OnDeinit(const int reason)
    ObjectDelete(0, "MtkCount2");
    ObjectDelete(0, "MtkPL");
    ObjectDelete(0, "MtkPLSL");
+   ObjectDelete(0, "MtkUSD1");
+   ObjectDelete(0, "MtkUSD2");
+   ObjectDelete(0, "MtkDD");
    ObjectDelete(0, g_pageBtnMain);
    ObjectDelete(0, g_pageBtnMove);
    ObjectDelete(0, g_pageBtnDD);
@@ -1185,7 +1190,16 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          int bar = sigBars[s];
          if(bar + 1 >= rates_total) continue;
 
-         if(sigHit[s] || sigSilver[s])
+         if(sigPullback[s])
+         {
+            // sienna: hit target but SL was touched first
+            cntLoss++;
+            double entry = open[bar + 1];
+            double curPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            double loss = sigDirs[s] == 1 ? (entry - curPrice) / _Point : (curPrice - entry) / _Point;
+            totalPL -= loss;
+         }
+         else if(sigHit[s] || sigSilver[s])
          {
             cntProfit++;
             totalPL += InpStatTarget;
@@ -1203,7 +1217,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
       // line 1: profit count
       string nm1 = "MtkCount1";
-      if(ObjectFind(0, nm1) < 0) ObjectCreate(0, nm1, OBJ_LABEL, 0, 0, 0);
+      ObjectDelete(0, nm1); ObjectCreate(0, nm1, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm1, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm1, OBJPROP_XDISTANCE, 15);
       ObjectSetInteger(0, nm1, OBJPROP_YDISTANCE, 30);
@@ -1215,10 +1229,10 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
       // line 2: loss count
       string nm2 = "MtkCount2";
-      if(ObjectFind(0, nm2) < 0) ObjectCreate(0, nm2, OBJ_LABEL, 0, 0, 0);
+      ObjectDelete(0, nm2); ObjectCreate(0, nm2, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm2, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm2, OBJPROP_XDISTANCE, 15);
-      ObjectSetInteger(0, nm2, OBJPROP_YDISTANCE, 47);
+      ObjectSetInteger(0, nm2, OBJPROP_YDISTANCE, 52);
       ObjectSetString(0, nm2, OBJPROP_TEXT, StringFormat("Loss:   %d", cntLoss));
       ObjectSetString(0, nm2, OBJPROP_FONT, "Arial Bold");
       ObjectSetInteger(0, nm2, OBJPROP_FONTSIZE, 10);
@@ -1227,10 +1241,10 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
       // line 3: P&L (no SL cap)
       string nm3 = "MtkPL";
-      if(ObjectFind(0, nm3) < 0) ObjectCreate(0, nm3, OBJ_LABEL, 0, 0, 0);
+      ObjectDelete(0, nm3); ObjectCreate(0, nm3, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm3, OBJPROP_XDISTANCE, 15);
-      ObjectSetInteger(0, nm3, OBJPROP_YDISTANCE, 64);
+      ObjectSetInteger(0, nm3, OBJPROP_YDISTANCE, 74);
       ObjectSetString(0, nm3, OBJPROP_TEXT, StringFormat("P&L:    %+.0f pt", totalPL));
       ObjectSetString(0, nm3, OBJPROP_FONT, "Arial Bold");
       ObjectSetInteger(0, nm3, OBJPROP_FONTSIZE, 10);
@@ -1245,24 +1259,19 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          {
             int bar = sigBars[s];
             if(bar + 1 >= rates_total) continue;
-            if(sigHit[s] || sigSilver[s])
-            {
+            if(sigPullback[s])
+               totalPLSL -= InpStatPullback; // sienna: SL hit before target
+            else if(sigHit[s] || sigSilver[s])
                totalPLSL += InpStatTarget;
-            }
             else
-            {
-               // if max adverse during signal's life exceeded SL → count full SL
-               double mae = sigMaxAdverse[s];
-               double loss = mae >= InpStatPullback ? InpStatPullback : mae;
-               totalPLSL -= loss;
-            }
+               totalPLSL -= InpStatPullback; // black: SL hit
          }
       }
       string nm4 = "MtkPLSL";
-      if(ObjectFind(0, nm4) < 0) ObjectCreate(0, nm4, OBJ_LABEL, 0, 0, 0);
+      ObjectDelete(0, nm4); ObjectCreate(0, nm4, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm4, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm4, OBJPROP_XDISTANCE, 15);
-      ObjectSetInteger(0, nm4, OBJPROP_YDISTANCE, 81);
+      ObjectSetInteger(0, nm4, OBJPROP_YDISTANCE, 96);
       ObjectSetString(0, nm4, OBJPROP_TEXT, InpStatPullback > 0
          ? StringFormat("P&L/SL: %+.0f pt", totalPLSL)
          : "P&L/SL: --");
@@ -1270,6 +1279,91 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nm4, OBJPROP_FONTSIZE, 10);
       ObjectSetInteger(0, nm4, OBJPROP_COLOR, clrBlack);
       ObjectSetInteger(0, nm4, OBJPROP_SELECTABLE, false);
+
+      // dollar rows
+      double ptToUsd = InpLot / 100.0;
+      double usdPL   = totalPL   * ptToUsd;
+      double usdPLSL = totalPLSL * ptToUsd;
+      double balPL   = InpDeposit + usdPL;
+      double balPLSL = InpDeposit + usdPLSL;
+
+      // find max daily drawdown
+      double maxDayDD = 0;
+      string maxDayStr = "--";
+      {
+         // collect unique days
+         int dayKeys[]; int dayCnt2 = 0;
+         for(int s = 1; s < sigCount; s++)
+         {
+            MqlDateTime mdtd; TimeToStruct(time[sigBars[s]], mdtd);
+            int dk = mdtd.year*10000 + mdtd.mon*100 + mdtd.day;
+            bool found = false;
+            for(int d = 0; d < dayCnt2; d++) if(dayKeys[d] == dk) { found = true; break; }
+            if(!found) { ArrayResize(dayKeys, dayCnt2+1); dayKeys[dayCnt2++] = dk; }
+         }
+         // for each day track intraday P&L curve, find max drawdown within day
+         for(int d = dayCnt2 - 1; d >= 0; d--)
+         {
+            int dk = dayKeys[d];
+            double cum = 0, peak = 0;
+            // walk signals chronologically (sigBars stored newest first, so reverse)
+            for(int s = sigCount - 1; s >= 1; s--)
+            {
+               MqlDateTime mdtd; TimeToStruct(time[sigBars[s]], mdtd);
+               int sk = mdtd.year*10000 + mdtd.mon*100 + mdtd.day;
+               if(sk != dk) continue;
+               if(sigBars[s]+1 >= rates_total) continue;
+               if(sigPullback[s]) cum -= (InpStatPullback > 0 ? InpStatPullback : sigMaxAdverse[s]);
+               else if(sigHit[s] || sigSilver[s]) cum += InpStatTarget;
+               else cum -= (InpStatPullback > 0 ? InpStatPullback : sigMaxAdverse[s]);
+               if(cum > peak) peak = cum;
+               double drawdown = peak - cum;
+               if(drawdown > 0)
+               {
+                  double dd = drawdown * ptToUsd / InpDeposit * 100.0;
+                  if(dd > maxDayDD)
+                  {
+                     maxDayDD = dd;
+                     int yr = dk/10000, mn = (dk%10000)/100, dy = dk%100;
+                     maxDayStr = StringFormat("%02d.%02d.%d", dy, mn, yr);
+                  }
+               }
+            }
+         }
+      }
+
+      string nmD1 = "MtkUSD1";
+      ObjectDelete(0, nmD1); ObjectCreate(0, nmD1, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, nmD1, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nmD1, OBJPROP_XDISTANCE, 15);
+      ObjectSetInteger(0, nmD1, OBJPROP_YDISTANCE, 118);
+      ObjectSetString(0, nmD1, OBJPROP_TEXT, StringFormat("$P&L:   %+.2f$  (%.2f$)", usdPL, balPL));
+      ObjectSetString(0, nmD1, OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, nmD1, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, nmD1, OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, nmD1, OBJPROP_SELECTABLE, false);
+
+      string nmD2 = "MtkUSD2";
+      ObjectDelete(0, nmD2); ObjectCreate(0, nmD2, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, nmD2, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nmD2, OBJPROP_XDISTANCE, 15);
+      ObjectSetInteger(0, nmD2, OBJPROP_YDISTANCE, 140);
+      ObjectSetString(0, nmD2, OBJPROP_TEXT, StringFormat("$SL:    %+.2f$  (%.2f$)", usdPLSL, balPLSL));
+      ObjectSetString(0, nmD2, OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, nmD2, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, nmD2, OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, nmD2, OBJPROP_SELECTABLE, false);
+
+      string nmD3 = "MtkDD";
+      ObjectDelete(0, nmD3); ObjectCreate(0, nmD3, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, nmD3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nmD3, OBJPROP_XDISTANCE, 15);
+      ObjectSetInteger(0, nmD3, OBJPROP_YDISTANCE, 162);
+      ObjectSetString(0, nmD3, OBJPROP_TEXT, StringFormat("MaxDD:  %.1f%% (%s)", maxDayDD, maxDayStr));
+      ObjectSetString(0, nmD3, OBJPROP_FONT, "Arial Bold");
+      ObjectSetInteger(0, nmD3, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, nmD3, OBJPROP_COLOR, maxDayDD >= 4.0 ? clrRed : clrBlack);
+      ObjectSetInteger(0, nmD3, OBJPROP_SELECTABLE, false);
    }
 
    if(!g_statsOn)
