@@ -80,6 +80,7 @@ double           InpSwingATR     = 1.5;           // ── Свинг: толе
 //═══════════════════════════════════════════════════════════════
 // ФІЛЬТР ЗА ТРЕНДОМ (тільки в напрямку тренду або у флеті)
 //═══════════════════════════════════════════════════════════════
+input bool             InpReverse     = false;          // РЕВЕРС: міняє BUY↔SELL
 input bool             InpTrendOnly   = false;          // ── За трендом: вкл/викл
 input int              InpTrendEMAPer = 50;             // ── За трендом: EMA період
 input double           InpTrendFlat   = 0.3;            // ── За трендом: флет зона (ATR множник)
@@ -1411,78 +1412,93 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       StringFormat("ALL   %d/%d (%.1f%%) %s", allHit, allTotal, allPct, allDD), clrBlack, y);
    y += 36;
 
-   DrawStatLabel(g_statPfx + "SSH", "── SESSIONS ──", clrBlack, y);
+   //--- persistent block (Winrate + Move + DD) moved to page 1
+   y += 10;
+   MqlDateTime nowDt2;
+   TimeToStruct(time[rates_total - 1], nowDt2);
+   int curHr2 = nowDt2.hour;
+
+   double bWR2 = hourBuyTotal[curHr2] > 0 ? 100.0 * hourBuyHit[curHr2] / hourBuyTotal[curHr2] : 0;
+   double sWR2 = hourSellTotal[curHr2] > 0 ? 100.0 * hourSellHit[curHr2] / hourSellTotal[curHr2] : 0;
+   int totalHr2 = hourBuyTotal[curHr2] + hourSellTotal[curHr2];
+   int lossHr2  = totalHr2 - hourBuyHit[curHr2] - hourSellHit[curHr2];
+   double lossPct2 = totalHr2 > 0 ? 100.0 * lossHr2 / totalHr2 : 0;
+
+   DrawStatLabel(g_statPfx + "CWR",
+      StringFormat("Winrate %dh:  BUY %.0f%%   SELL %.0f%%   LOSSES: %.0f%%", curHr2, bWR2, sWR2, lossPct2),
+      clrDodgerBlue, y);
    y += 16;
-   DrawStatLabel(g_statPfx + "SD",
-      StringFormat("                        [100%%] {%d%%}", InpStatPct), clrGray, y, CORNER_LEFT_UPPER, 7);
+
+   DrawStatLabel(g_statPfx + "CMH", "MOVE  90%  80%  70%  60%  50%  40%  30%  20%  10%", clrGray, y);
    y += 14;
 
-   string sessNames[3] = {"ASIA    ", "LONDON  ", "NEW YORK"};
-   string sessIds[3]   = {"SA", "SL", "SN"};
+   double offPfx = _Point;
+   if(hourBuyHit[curHr2] > 0)
+      DrawStatLabel(g_statPfx + "CMB",
+         StringFormat("BUY  %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f",
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 10),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 20),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 30),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 40),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 50),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 60),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 70),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 80),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, 1, 90)),
+         clrGreen, y);
+   else DrawStatLabel(g_statPfx + "CMB", "BUY    --   --   --   --   --   --   --   --   --", clrGray, y);
+   y += 14;
 
-   for(int k = 0; k < 3; k++)
-   {
-      double pct = sessTotal[k] > 0 ? 100.0 * sessHit[k] / sessTotal[k] : 0;
-      int sp85 = CalcP85(ddVals, ddHrs, ddDirs, ddSesses, ddCount, -1, 0, k);
-      string sdd = sessHit[k] > 0 ? StringFormat("[%d] {%d}", sessMaxDD[k], sp85) : "[--]";
-      DrawStatLabel(g_statPfx + sessIds[k],
-         StringFormat("%s %d/%d (%.0f%%) %s", sessNames[k], sessHit[k], sessTotal[k], pct, sdd),
-         clrBlack, y);
-      y += 22;
-   }
-
-   //--- TOP streaks — BUY left, SELL right side by side
-   int stx = 330;
-   y += 28;
-   DrawStatLabel(g_statPfx + "TBH",
-      StringFormat("── TOP BUY STREAKS (%d+) ──", InpStreakLen), clrGreen, y);
-   DrawStatLabel(g_statPfx + "TSH",
-      StringFormat("── TOP SELL STREAKS (%d+) ──", InpStreakLen), clrOrangeRed, y,
-      CORNER_LEFT_UPPER, 10, stx);
+   if(hourSellHit[curHr2] > 0)
+      DrawStatLabel(g_statPfx + "CMS",
+         StringFormat("SELL %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f %4.0f",
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 10),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 20),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 30),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 40),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 50),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 60),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 70),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 80),
+            CalcMFEPct(mfeVals, mfeHrs, mfeDirs, mfeCount, curHr2, -1, 90)),
+         clrOrangeRed, y);
+   else DrawStatLabel(g_statPfx + "CMS", "SELL   --   --   --   --   --   --   --   --   --", clrGray, y);
    y += 16;
 
-   int bUsed[5]; ArrayInitialize(bUsed, -1);
-   int sUsed[5]; ArrayInitialize(sUsed, -1);
-   for(int n = 0; n < 5; n++)
-   {
-      int bestBHr = -1, bestBVal = 0;
-      for(int h = 0; h < 24; h++)
-      {
-         if(hourBuyTotal[h] == 0 || hourBuyHit[h] == hourBuyTotal[h]) continue;
-         bool skip = false;
-         for(int u = 0; u < n; u++) if(bUsed[u] == h) { skip = true; break; }
-         if(skip) continue;
-         if(buyStreakCnt[h] > bestBVal) { bestBVal = buyStreakCnt[h]; bestBHr = h; }
-      }
-      if(bestBHr >= 0)
-      {
-         bUsed[n] = bestBHr;
-         DrawStatLabel(g_statPfx + "TB" + IntegerToString(n),
-            StringFormat("%dh-%dh  %dx  %d/%d", bestBHr, (bestBHr + 1) % 24,
-               bestBVal, hourBuyHit[bestBHr], hourBuyTotal[bestBHr]),
-            clrBlack, y);
-      }
+   DrawStatLabel(g_statPfx + "CDH", "DD    20%  30%  40%  50%  60%  70%  80%  90% 100%", clrGray, y);
+   y += 14;
 
-      int bestSHr = -1, bestSVal = 0;
-      for(int h = 0; h < 24; h++)
-      {
-         if(hourSellTotal[h] == 0 || hourSellHit[h] == hourSellTotal[h]) continue;
-         bool skip = false;
-         for(int u = 0; u < n; u++) if(sUsed[u] == h) { skip = true; break; }
-         if(skip) continue;
-         if(sellStreakCnt[h] > bestSVal) { bestSVal = sellStreakCnt[h]; bestSHr = h; }
-      }
-      if(bestSHr >= 0)
-      {
-         sUsed[n] = bestSHr;
-         DrawStatLabel(g_statPfx + "TS" + IntegerToString(n),
-            StringFormat("%dh-%dh  %dx  %d/%d", bestSHr, (bestSHr + 1) % 24,
-               bestSVal, hourSellHit[bestSHr], hourSellTotal[bestSHr]),
-            clrBlack, y, CORNER_LEFT_UPPER, 10, stx);
-      }
+   if(hourBuyHit[curHr2] > 0)
+      DrawStatLabel(g_statPfx + "CDB",
+         StringFormat("BUY  %4d %4d %4d %4d %4d %4d %4d %4d %4d",
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 20),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 30),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 40),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 50),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 60),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 70),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 80),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 90),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, 1, 100)),
+         clrGreen, y);
+   else DrawStatLabel(g_statPfx + "CDB", "BUY    --   --   --   --   --   --   --   --   --", clrGray, y);
+   y += 14;
 
-      y += 16;
-   }
+   if(hourSellHit[curHr2] > 0)
+      DrawStatLabel(g_statPfx + "CDS",
+         StringFormat("SELL %4d %4d %4d %4d %4d %4d %4d %4d %4d",
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 20),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 30),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 40),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 50),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 60),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 70),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 80),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 90),
+            CalcDDPct(ddVals, ddHrs, ddDirs, ddCount, curHr2, -1, 100)),
+         clrOrangeRed, y);
+   else DrawStatLabel(g_statPfx + "CDS", "SELL   --   --   --   --   --   --   --   --   --", clrGray, y);
+   y += 10;
 
    //--- правая сторона: BUY и SELL по часам рядом
    int ry = 40;
@@ -2050,13 +2066,10 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    } // end if(g_statsOn)
 
-   //--- bottom-left: current hour Move & DD table (only when stats OFF)
+   //--- clear persistent bottom-left block (moved to page 1)
    ObjectsDeleteAll(0, g_curPfx);
-   if(g_statsOn)
-   {
-      ChartRedraw(0);
-      return;
-   }
+   ChartRedraw(0);
+   return;
    MqlDateTime nowDt;
    TimeToStruct(time[rates_total - 1], nowDt);
    int curHr = nowDt.hour;
@@ -2538,6 +2551,13 @@ int OnCalculate(const int rates_total,
          continue;
 
       double offset = _Point * 200;
+
+      // apply reverse if enabled
+      if(InpReverse)
+      {
+         bool tmp = buySignal; buySignal = sellSignal; sellSignal = tmp;
+         bool tmpc = buyCool;  buyCool  = sellCool;   sellCool   = tmpc;
+      }
 
       if(buySignal && buyCool)
       {
