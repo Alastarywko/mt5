@@ -1209,7 +1209,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       }
 
       // line 1: profit count
-      string nm1 = g_statPfx + "Count1";
+      string nm1 = g_curPfx + "Count1";
       ObjectDelete(0, nm1); ObjectCreate(0, nm1, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm1, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm1, OBJPROP_XDISTANCE, 15);
@@ -1221,7 +1221,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nm1, OBJPROP_SELECTABLE, false);
 
       // line 2: loss count
-      string nm2 = g_statPfx + "Count2";
+      string nm2 = g_curPfx + "Count2";
       ObjectDelete(0, nm2); ObjectCreate(0, nm2, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm2, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm2, OBJPROP_XDISTANCE, 15);
@@ -1233,7 +1233,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nm2, OBJPROP_SELECTABLE, false);
 
       // line 3: P&L (no SL cap)
-      string nm3 = g_statPfx + "PL";
+      string nm3 = g_curPfx + "PL";
       ObjectDelete(0, nm3); ObjectCreate(0, nm3, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm3, OBJPROP_XDISTANCE, 15);
@@ -1257,10 +1257,26 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
             else if(sigHit[s] || sigSilver[s])
                totalPLSL += InpStatTarget;
             else
-               totalPLSL -= InpStatPullback; // black: SL hit
+            {
+               // black: use actual MAE if it didn't reach SL, else full SL
+               int bar = sigBars[s];
+               if(bar + 1 >= rates_total) continue;
+               double mae = sigMaxAdverse[s];
+               if(mae >= InpStatPullback)
+                  totalPLSL -= InpStatPullback;
+               else
+               {
+                  // didn't reach SL yet — use current price distance
+                  double entry = open[bar + 1];
+                  double curPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+                  double loss = sigDirs[s] == 1 ? (entry - curPrice) / _Point
+                                                : (curPrice - entry) / _Point;
+                  totalPLSL -= MathMax(0, loss);
+               }
+            }
          }
       }
-      string nm4 = g_statPfx + "PLSL";
+      string nm4 = g_curPfx + "PLSL";
       ObjectDelete(0, nm4); ObjectCreate(0, nm4, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nm4, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm4, OBJPROP_XDISTANCE, 15);
@@ -1306,9 +1322,23 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
                int sk = mdtd.year*10000 + mdtd.mon*100 + mdtd.day;
                if(sk != dk) continue;
                if(sigBars[s]+1 >= rates_total) continue;
-               if(sigPullback[s]) cum -= (InpStatPullback > 0 ? InpStatPullback : sigMaxAdverse[s]);
-               else if(sigHit[s] || sigSilver[s]) cum += InpStatTarget;
-               else cum -= (InpStatPullback > 0 ? InpStatPullback : sigMaxAdverse[s]);
+               if(sigPullback[s])
+                  cum -= InpStatPullback;
+               else if(sigHit[s] || sigSilver[s])
+                  cum += InpStatTarget;
+               else
+               {
+                  double mae2 = sigMaxAdverse[s];
+                  if(InpStatPullback > 0 && mae2 >= InpStatPullback)
+                     cum -= InpStatPullback;
+                  else
+                  {
+                     double entry2 = open[sigBars[s] + 1];
+                     double cur2 = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+                     double loss2 = sigDirs[s] == 1 ? (entry2 - cur2) / _Point : (cur2 - entry2) / _Point;
+                     cum -= MathMax(0, loss2);
+                  }
+               }
                if(cum > peak) peak = cum;
                double drawdown = peak - cum;
                if(drawdown > 0)
@@ -1325,7 +1355,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
          }
       }
 
-      string nmD1 = g_statPfx + "USD1";
+      string nmD1 = g_curPfx + "USD1";
       ObjectDelete(0, nmD1); ObjectCreate(0, nmD1, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nmD1, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nmD1, OBJPROP_XDISTANCE, 15);
@@ -1336,7 +1366,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nmD1, OBJPROP_COLOR, clrBlack);
       ObjectSetInteger(0, nmD1, OBJPROP_SELECTABLE, false);
 
-      string nmD2 = g_statPfx + "USD2";
+      string nmD2 = g_curPfx + "USD2";
       ObjectDelete(0, nmD2); ObjectCreate(0, nmD2, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nmD2, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nmD2, OBJPROP_XDISTANCE, 15);
@@ -1347,7 +1377,7 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
       ObjectSetInteger(0, nmD2, OBJPROP_COLOR, clrBlack);
       ObjectSetInteger(0, nmD2, OBJPROP_SELECTABLE, false);
 
-      string nmD3 = g_statPfx + "DD";
+      string nmD3 = g_curPfx + "DD";
       ObjectDelete(0, nmD3); ObjectCreate(0, nmD3, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nmD3, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nmD3, OBJPROP_XDISTANCE, 15);
