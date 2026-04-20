@@ -80,7 +80,6 @@ double           InpSwingATR     = 1.5;           // ── Свинг: толе
 //═══════════════════════════════════════════════════════════════
 // ФІЛЬТР ЗА ТРЕНДОМ (тільки в напрямку тренду або у флеті)
 //═══════════════════════════════════════════════════════════════
-input bool             InpReverse     = false;          // РЕВЕРС: міняє BUY↔SELL
 input bool             InpTrendOnly   = false;          // ── За трендом: вкл/викл
 input int              InpTrendEMAPer = 100;            // ── За трендом: EMA період
 input double           InpTrendFlat   = 2.0;            // ── За трендом: флет зона (ATR множник)
@@ -2182,8 +2181,6 @@ void UpdateStatsPanel(const int rates_total, const int barLimit, const int minSt
 
    } // end if(g_statsOn)
 
-   //--- clear persistent bottom-left block (now on page 1)
-   ObjectsDeleteAll(0, g_curPfx);
    ChartRedraw(0);
 }
 
@@ -2549,13 +2546,6 @@ int OnCalculate(const int rates_total,
          continue;
 
       double offset = _Point * 200;
-
-      // apply reverse if enabled
-      if(InpReverse)
-      {
-         bool tmp = buySignal; buySignal = sellSignal; sellSignal = tmp;
-         bool tmpc = buyCool;  buyCool  = sellCool;   sellCool   = tmpc;
-      }
 
       if(buySignal && buyCool)
       {
