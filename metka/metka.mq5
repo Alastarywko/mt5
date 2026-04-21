@@ -2234,6 +2234,11 @@ int OnCalculate(const int rates_total,
 
    int barLimit = rates_total - 2;
 
+   // reset signal GlobalVars at start of each new bar recalc
+   // so EA doesn't trade on filtered-out signals
+   if(prev_calculated > 0 && prev_calculated < rates_total)
+      GlobalVariableSet("MetkaSignal_Time", 0);
+
    int start;
    if(prev_calculated == 0)
    {
