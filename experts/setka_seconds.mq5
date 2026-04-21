@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                                       setka.mq5 |
-//|   Сітка: наступний ордер, коли ціна пройшла N пунктів проти попереднього входу |
+//|   Сітка: ордер кожні N сек. Закриття сесії: сумарний профіт ≥ формула |
 //+------------------------------------------------------------------+
 #property copyright "2026"
-#property version   "1.05"
-#property description "Крок у пунктах від останньої позиції, лот, max, авто-close сесії"
+#property version   "1.04"
+#property description "Інтервал (сек), лот, max ордерів, опційне авто-close сесії за прибутком"
 
 #include <Trade\Trade.mqh>
 
@@ -14,18 +14,17 @@ enum ENUM_SETKA_DIR
    SETKA_SELL = 1   // SELL
 };
 
-input double          InpInitialLot    = 1.0;   // Початковий лот
-input ENUM_SETKA_DIR  InpDirection     = SETKA_BUY;  // Напрямок
-input int             InpMaxOrders     = 0;    // Макс. ордерів (0 = без обмеження)
-input int             InpStepPoints    = 100;  // Пунктів проти попереднього входу до наступного ордера
-input double          InpProfitLotK    = 0.1;  // Поріг: множник до суми лотів (перший)
-input double          InpProfitCloseK  = 2.0;  // Поріг: додатковий множник (другий)
-input bool            InpAutoClose     = false; // Автозакриття сесії за прибутком (умова вище)
-input ulong           InpMagic         = 202620;     // Magic number
+input double          InpInitialLot      = 1.0;   // Початковий лот
+input ENUM_SETKA_DIR  InpDirection       = SETKA_BUY;  // Напрямок
+input int             InpMaxOrders       = 0;    // Макс. ордерів (0 = без обмеження)
+input int             InpOpenIntervalSec = 60;   // Інтервал відкриття (секунд)
+input double          InpProfitLotK      = 0.1;  // Поріг: множник до суми лотів (перший)
+input double          InpProfitCloseK     = 2.0;  // Поріг: додатковий множник (другий)
+input bool            InpAutoClose        = false; // Автозакриття сесії за прибутком (умова вище)
+input ulong           InpMagic            = 202620;     // Magic number
 
 CTrade trade;
 ulong  g_session_tickets[];
-double g_last_grid_entry_price = 0;
 
 //+------------------------------------------------------------------+
 ENUM_ORDER_TYPE_FILLING DetectFilling()
@@ -96,59 +95,6 @@ void PruneSessionTickets()
 }
 
 //+------------------------------------------------------------------+
-int CountPositionsForSetka()
-{
-   int c = 0;
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      if(PositionGetSymbol(i) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
-      long type = PositionGetInteger(POSITION_TYPE);
-      if(SetkaDirectionOk(type)) c++;
-   }
-   return c;
-}
-
-//+------------------------------------------------------------------+
-void SyncLastEntryFromPositions()
-{
-   int n = CountPositionsForSetka();
-   if(n == 0)
-   {
-      g_last_grid_entry_price = 0;
-      return;
-   }
-
-   long   best_ms    = -1;
-   ulong  best_ticket = 0;
-   double best_open   = 0;
-
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(PositionGetSymbol(i) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
-      long type = PositionGetInteger(POSITION_TYPE);
-      if(!SetkaDirectionOk(type)) continue;
-
-      if(!PositionSelectByTicket(ticket)) continue;
-
-      long tmsc = (long)PositionGetInteger(POSITION_TIME_MSC);
-      if(tmsc == 0)
-         tmsc = (long)PositionGetInteger(POSITION_TIME) * 1000;
-
-      if(tmsc > best_ms || (tmsc == best_ms && ticket > best_ticket))
-      {
-         best_ms     = tmsc;
-         best_ticket = ticket;
-         best_open   = PositionGetDouble(POSITION_PRICE_OPEN);
-      }
-   }
-   g_last_grid_entry_price = best_open;
-}
-
-//+------------------------------------------------------------------+
 void CloseAllSessionPositions()
 {
    for(int i = ArraySize(g_session_tickets) - 1; i >= 0; i--)
@@ -160,7 +106,6 @@ void CloseAllSessionPositions()
                      trade.ResultRetcode(), trade.ResultComment());
    }
    ArrayResize(g_session_tickets, 0);
-   SyncLastEntryFromPositions();
    Print("setka: усі позиції сесії закрито (ціль по прибутку)");
 }
 
@@ -194,6 +139,20 @@ void CheckSessionProfitAndClose()
                   sum_profit, target, sum_lots, InpProfitLotK, InpProfitCloseK);
       CloseAllSessionPositions();
    }
+}
+
+//+------------------------------------------------------------------+
+int CountPositionsForSetka()
+{
+   int c = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(PositionGetSymbol(i) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      long type = PositionGetInteger(POSITION_TYPE);
+      if(SetkaDirectionOk(type)) c++;
+   }
+   return c;
 }
 
 //+------------------------------------------------------------------+
@@ -245,48 +204,11 @@ void OpenSetkaOrder()
       ulong after[];
       CollectSetkaTickets(after);
       RegisterNewSessionTickets(before, after);
-      SyncLastEntryFromPositions();
-      PrintFormat("setka: OK lot=%.2f (#%d) dir=%s сесія=%d last=%.5f",
+      PrintFormat("setka: OK lot=%.2f (#%d) dir=%s сесія=%d",
                   vol, CountPositionsForSetka(),
                   InpDirection == SETKA_BUY ? "BUY" : "SELL",
-                  ArraySize(g_session_tickets),
-                  g_last_grid_entry_price);
+                  ArraySize(g_session_tickets));
    }
-}
-
-//+------------------------------------------------------------------+
-void TryOpenNextByPriceStep()
-{
-   SyncLastEntryFromPositions();
-
-   int cnt = CountPositionsForSetka();
-   if(InpMaxOrders > 0 && cnt >= InpMaxOrders)
-      return;
-
-   int    nPts = InpStepPoints < 1 ? 1 : InpStepPoints;
-   double dist = (double)nPts * _Point;
-
-   if(cnt == 0)
-   {
-      OpenSetkaOrder();
-      return;
-   }
-
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-
-   if(InpDirection == SETKA_BUY)
-   {
-      if(bid > g_last_grid_entry_price - dist)
-         return;
-   }
-   else
-   {
-      if(ask < g_last_grid_entry_price + dist)
-         return;
-   }
-
-   OpenSetkaOrder();
 }
 
 //+------------------------------------------------------------------+
@@ -297,10 +219,15 @@ int OnInit()
    trade.SetTypeFilling(DetectFilling());
 
    ArrayResize(g_session_tickets, 0);
-   SyncLastEntryFromPositions();
 
-   Print("setka: крок ", (InpStepPoints < 1 ? 1 : InpStepPoints), " пунктів проти останнього входу, lot0=",
-         InpInitialLot, ", dir=", (InpDirection == SETKA_BUY ? "BUY" : "SELL"),
+   int sec = InpOpenIntervalSec < 1 ? 1 : InpOpenIntervalSec;
+   if(!EventSetTimer(sec))
+   {
+      Print("setka: EventSetTimer failed");
+      return INIT_FAILED;
+   }
+   Print("setka: таймер ", sec, " с, lot0=", InpInitialLot,
+         ", dir=", (InpDirection == SETKA_BUY ? "BUY" : "SELL"),
          ", max=", (InpMaxOrders > 0 ? IntegerToString(InpMaxOrders) : "∞"),
          ", автозакриття=", (InpAutoClose ? "увімкн." : "вимкн."),
          (InpAutoClose ? ", close if profit ≥ sum(lots)×" + DoubleToString(InpProfitLotK, 4) + "×" + DoubleToString(InpProfitCloseK, 4) : ""));
@@ -310,13 +237,20 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+   EventKillTimer();
+}
+
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   CheckSessionProfitAndClose();
+   OpenSetkaOrder();
 }
 
 //+------------------------------------------------------------------+
 void OnTick()
 {
    CheckSessionProfitAndClose();
-   TryOpenNextByPriceStep();
 }
 
 //+------------------------------------------------------------------+
