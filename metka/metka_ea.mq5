@@ -26,6 +26,7 @@ input bool   InpCounter       = false;  // Контр-ордер: вкл/вик�
 input double InpCounterLot    = 1.0;    // Контр-ордер: лот
 input int    InpCounterTP     = 100;    // Контр-ордер: Take Profit (пунктів)
 input int    InpCounterSL     = 1450;   // Контр-ордер: Stop Loss (пунктів)
+input int    InpCounterDelay  = 0;      // Контр-ордер: відступ проти позиції (пунктів, 0=одразу)
 
 //═══════════════════════════════════════════════════════════════
 // ВІДКЛАДЕНИЙ ОРДЕР
@@ -43,6 +44,9 @@ input int    InpTrailStep     = 10;     // Трейлінг: розмір (пу�
 CTrade   trade;
 int      hIndicator;
 datetime lastSignalTime;
+int      g_counterDir    = 0;    // pending counter: 1=buy, -1=sell
+double   g_counterEntry  = 0;    // entry price of main position
+bool     g_counterPlaced = false;
 
 //+------------------------------------------------------------------+
 int FindChartIndicator()
@@ -124,6 +128,26 @@ void OnTick()
       return;
    }
 
+   // delayed counter order
+   if(InpCounter && InpCounterDelay > 0 && g_counterDir != 0 && !g_counterPlaced)
+   {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double dist = 0;
+      if(g_counterDir == -1) // counter sell after buy → check if price dropped
+         dist = g_counterEntry - bid;
+      else                   // counter buy after sell → check if price rose
+         dist = ask - g_counterEntry;
+
+      if(dist >= InpCounterDelay * _Point)
+      {
+         if(g_counterDir == -1) OpenCounterSell();
+         else                   OpenCounterBuy();
+         g_counterPlaced = true;
+         g_counterDir = 0;
+      }
+   }
+
    if(!GlobalVariableCheck("MetkaSignal_Time"))
       return;
 
@@ -132,6 +156,29 @@ void OnTick()
 
    if(sigTime <= lastSignalTime)
       return;
+   if(sigTime == 0)
+      return;
+
+   // verify arrow actually exists on chart at sigTime
+   bool arrowExists = false;
+   for(int chk = 1; chk <= 10; chk++)
+   {
+      if(iTime(_Symbol, _Period, chk) == sigTime)
+      {
+         double b[], s[], sb[], ss[];
+         if(CopyBuffer(hIndicator, 0, chk, 1, b)  == 1 && b[0]  != EMPTY_VALUE) arrowExists = true;
+         if(CopyBuffer(hIndicator, 1, chk, 1, s)  == 1 && s[0]  != EMPTY_VALUE) arrowExists = true;
+         if(CopyBuffer(hIndicator, 2, chk, 1, sb) == 1 && sb[0] != EMPTY_VALUE) arrowExists = true;
+         if(CopyBuffer(hIndicator, 3, chk, 1, ss) == 1 && ss[0] != EMPTY_VALUE) arrowExists = true;
+         break;
+      }
+   }
+   if(!arrowExists)
+   {
+      lastSignalTime = sigTime;
+      GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
+      return;
+   }
 
    // sigDir: 1=buy, 2=strong buy, -1=sell, -2=strong sell
    bool isBuy       = (sigDir == 1);
@@ -158,13 +205,31 @@ void OnTick()
    {
       OpenBuy();
       if(InpCounter)
-         OpenCounterSell();
+      {
+         if(InpCounterDelay == 0)
+            OpenCounterSell();
+         else
+         {
+            g_counterDir = -1;
+            g_counterEntry = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            g_counterPlaced = false;
+         }
+      }
    }
    else
    {
       OpenSell();
       if(InpCounter)
-         OpenCounterBuy();
+      {
+         if(InpCounterDelay == 0)
+            OpenCounterBuy();
+         else
+         {
+            g_counterDir = 1;
+            g_counterEntry = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            g_counterPlaced = false;
+         }
+      }
    }
 }
 
