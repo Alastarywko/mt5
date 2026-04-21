@@ -2574,6 +2574,19 @@ int OnCalculate(const int rates_total,
    StrongBuyBuf[rates_total - 1]  = EMPTY_VALUE;
    StrongSellBuf[rates_total - 1] = EMPTY_VALUE;
 
+   //--- if no arrow on last bar but GlobalVariable has its time → filters removed it → reset
+   if(GlobalVariableCheck("MetkaSignal_Time"))
+   {
+      datetime sigT = (datetime)GlobalVariableGet("MetkaSignal_Time");
+      if(sigT == time[barLimit])
+      {
+         bool hasArrow = (BuyBuf[barLimit] != EMPTY_VALUE || SellBuf[barLimit] != EMPTY_VALUE ||
+                          StrongBuyBuf[barLimit] != EMPTY_VALUE || StrongSellBuf[barLimit] != EMPTY_VALUE);
+         if(!hasArrow)
+            GlobalVariableSet("MetkaSignal_Time", 0);
+      }
+   }
+
    //--- recalc probability label when a new arrow just formed on the previous bar
    int prevBar = barLimit;
    bool newArrow = (BuyBuf[prevBar] != EMPTY_VALUE || SellBuf[prevBar] != EMPTY_VALUE ||
