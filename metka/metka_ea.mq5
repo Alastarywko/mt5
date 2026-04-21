@@ -179,6 +179,9 @@ void OnTick()
    lastSignalTime = sigTime;
    GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
 
+   PrintFormat("metka_ea: SIGNAL sigTime=%s dir=%d buy=%d sell=%d",
+               TimeToString(sigTime), sigDir, tradeBuy, tradeSell);
+
    DeletePendingOrders();
 
    if(tradeBuy)
