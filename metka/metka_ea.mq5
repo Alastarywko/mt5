@@ -159,26 +159,6 @@ void OnTick()
    if(sigTime == 0)
       return;
 
-   // verify arrow actually exists on chart at sigTime
-   bool arrowExists = false;
-   for(int chk = 1; chk <= 10; chk++)
-   {
-      if(iTime(_Symbol, _Period, chk) == sigTime)
-      {
-         double b[], s[], sb[], ss[];
-         if(CopyBuffer(hIndicator, 0, chk, 1, b)  == 1 && b[0]  != EMPTY_VALUE) arrowExists = true;
-         if(CopyBuffer(hIndicator, 1, chk, 1, s)  == 1 && s[0]  != EMPTY_VALUE) arrowExists = true;
-         if(CopyBuffer(hIndicator, 2, chk, 1, sb) == 1 && sb[0] != EMPTY_VALUE) arrowExists = true;
-         if(CopyBuffer(hIndicator, 3, chk, 1, ss) == 1 && ss[0] != EMPTY_VALUE) arrowExists = true;
-         break;
-      }
-   }
-   if(!arrowExists)
-   {
-      lastSignalTime = sigTime;
-      GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
-      return;
-   }
 
    // sigDir: 1=buy, 2=strong buy, -1=sell, -2=strong sell
    bool isBuy       = (sigDir == 1);
