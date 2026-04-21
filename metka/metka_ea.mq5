@@ -14,10 +14,16 @@
 //═══════════════════════════════════════════════════════════════
 input double InpLotSize       = 1.0;    // Лот
 input int    InpTP            = 100;    // Take Profit (пунктів)
-input int    InpSL            = 1450;   // Stop Loss (пунктів)
+input int    InpSL            = 7000;   // Stop Loss (пунктів)
+input bool   InpDirectBuy     = true;   // Прямий BUY (фолс = відкривати SELL на BUY сигнал)
+input bool   InpDirectSell    = true;   // Прямий SELL (фолс = відкривати BUY на SELL сигнал)
+
 input ulong  InpMagic         = 202612; // Magic number
-input bool   InpTradeStrongBuy  = false;  // Торгувати сильні BUY
+input bool   InpTradeBuy      = true;   // Торгувати BUY сигнали
+input bool   InpTradeSell     = true;   // Торгувати SELL сигнали
+input bool   InpTradeStrongBuy  = true;  // Торгувати сильні BUY
 input bool   InpTradeStrongSell = true;   // Торгувати сильні SELL
+
 
 //═══════════════════════════════════════════════════════════════
 // КОНТР-ОРДЕР
@@ -31,8 +37,8 @@ input int    InpCounterDelay  = 0;      // Контр-ордер: відступ
 //═══════════════════════════════════════════════════════════════
 // ВІДКЛАДЕНИЙ ОРДЕР
 //═══════════════════════════════════════════════════════════════
-input bool   InpPending       = false;  // Відкладений ордер: вкл/викл
-input int    InpPendingOffset = 30;     // Відкладений: відступ (пунктів)
+bool   InpPending       = false;  // Відкладений ордер: вкл/викл
+int    InpPendingOffset = 30;     // Відкладений: відступ (пунктів)
 
 //═══════════════════════════════════════════════════════════════
 // ТРЕЙЛІНГ СТОП
@@ -166,10 +172,34 @@ void OnTick()
    bool isSell       = (sigDir == -1);
    bool isStrongSell = (sigDir == -2);
 
-   bool tradeBuy  = isBuy || (isStrongBuy && InpTradeStrongBuy);
-   bool tradeSell = isSell || (isStrongSell && InpTradeStrongSell);
+   // determine if signal passes strong filter
+   bool sigIsBuy  = isBuy || (isStrongBuy  && InpTradeStrongBuy);
+   bool sigIsSell = isSell || (isStrongSell && InpTradeStrongSell);
 
-   if(!tradeBuy && !tradeSell)
+   if(!sigIsBuy && !sigIsSell)
+   {
+      lastSignalTime = sigTime;
+      GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
+      return;
+   }
+
+   // determine actual trade direction
+   // InpDirectBuy=false → on BUY signal open SELL; InpDirectSell=false → on SELL signal open BUY
+   bool doOpenBuy  = false;
+   bool doOpenSell = false;
+
+   if(sigIsBuy)
+   {
+      if(InpDirectBuy)  doOpenBuy  = InpTradeBuy;
+      else              doOpenSell = InpTradeSell;
+   }
+   if(sigIsSell)
+   {
+      if(InpDirectSell) doOpenSell = InpTradeSell;
+      else              doOpenBuy  = InpTradeBuy;
+   }
+
+   if(!doOpenBuy && !doOpenSell)
    {
       lastSignalTime = sigTime;
       GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
@@ -179,12 +209,12 @@ void OnTick()
    lastSignalTime = sigTime;
    GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
 
-   PrintFormat("metka_ea: SIGNAL sigTime=%s dir=%d buy=%d sell=%d",
-               TimeToString(sigTime), sigDir, tradeBuy, tradeSell);
+   PrintFormat("metka_ea: SIGNAL sigTime=%s dir=%d openBuy=%d openSell=%d",
+               TimeToString(sigTime), sigDir, doOpenBuy, doOpenSell);
 
    DeletePendingOrders();
 
-   if(tradeBuy)
+   if(doOpenBuy)
    {
       OpenBuy();
       if(InpCounter)
@@ -199,7 +229,7 @@ void OnTick()
          }
       }
    }
-   else
+   if(doOpenSell)
    {
       OpenSell();
       if(InpCounter)
