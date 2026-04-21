@@ -3,7 +3,7 @@
 //|   Сітка: наступний ордер, коли ціна пройшла N пунктів проти попереднього входу |
 //+------------------------------------------------------------------+
 #property copyright "2026"
-#property version   "1.06"
+#property version   "1.07"
 #property description "Лот: початковий×1,×2,×3… Крок у пунктах, max, авто-close сесії"
 
 #include <Trade\Trade.mqh>
@@ -197,6 +197,21 @@ void CheckSessionProfitAndClose()
 }
 
 //+------------------------------------------------------------------+
+int VolumeDecimalsFromStep(const double step)
+{
+   if(step <= 0.0)
+      return 2;
+   int    d = 0;
+   double r = step;
+   while(r < 1.0 - 1e-12 && d < 8)
+   {
+      r *= 10.0;
+      d++;
+   }
+   return d;
+}
+
+//+------------------------------------------------------------------+
 double LotForNextOrder()
 {
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
@@ -210,8 +225,7 @@ double LotForNextOrder()
    vol = MathMin(vol, vmax);
    vol = MathFloor(vol / step) * step;
    if(vol < vmin) vol = vmin;
-   int dig = (int)SymbolInfoInteger(_Symbol, SYMBOL_VOLUME_DIGITS);
-   if(dig < 0 || dig > 8) dig = 2;
+   int dig = VolumeDecimalsFromStep(step);
    return NormalizeDouble(vol, dig);
 }
 
