@@ -3,8 +3,8 @@
 //|   Сітка: наступний ордер, коли ціна пройшла N пунктів проти попереднього входу |
 //+------------------------------------------------------------------+
 #property copyright "2026"
-#property version   "1.05"
-#property description "Крок у пунктах від останньої позиції, лот, max, авто-close сесії"
+#property version   "1.06"
+#property description "Лот: початковий×1,×2,×3… Крок у пунктах, max, авто-close сесії"
 
 #include <Trade\Trade.mqh>
 
@@ -204,12 +204,15 @@ double LotForNextOrder()
    double vmax = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    int    n    = CountPositionsForSetka();
 
-   double vol = InpInitialLot + (double)n * step;
+   // Початковий×1, ×2, ×3… → 10,20,30,40… або 100,200,300…
+   double vol = InpInitialLot * (double)(n + 1);
    vol = MathMax(vol, vmin);
    vol = MathMin(vol, vmax);
    vol = MathFloor(vol / step) * step;
    if(vol < vmin) vol = vmin;
-   return NormalizeDouble(vol, 2);
+   int dig = (int)SymbolInfoInteger(_Symbol, SYMBOL_VOLUME_DIGITS);
+   if(dig < 0 || dig > 8) dig = 2;
+   return NormalizeDouble(vol, dig);
 }
 
 //+------------------------------------------------------------------+
