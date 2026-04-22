@@ -226,6 +226,12 @@ int OnInit()
    dotAlerted     = false;
    g_statsOn      = InpShowStats;
    g_pageChanged  = true;
+
+   // CRITICAL: reset signal GlobalVars on init so EA never trades on stale
+   // signal that was left over from a previous run with different filters
+   GlobalVariableSet("MetkaSignal_Time", 0);
+   GlobalVariableSet("MetkaSignal_Dir",  0);
+
    EventSetTimer(1);
    return(INIT_SUCCEEDED);
 }
@@ -2558,11 +2564,6 @@ int OnCalculate(const int rates_total,
             StrongBuyBuf[i] = low[i] - offset;
          else
             BuyBuf[i] = low[i] - offset;
-         if(i == barLimit)
-         {
-            GlobalVariableSet("MetkaSignal_Time", (double)time[i]);
-            GlobalVariableSet("MetkaSignal_Dir", isStrong ? 2 : 1);
-         }
       }
 
       if(sellSignal && sellCool)
@@ -2571,11 +2572,6 @@ int OnCalculate(const int rates_total,
             StrongSellBuf[i] = high[i] + offset;
          else
             SellBuf[i] = high[i] + offset;
-         if(i == barLimit)
-         {
-            GlobalVariableSet("MetkaSignal_Time", (double)time[i]);
-            GlobalVariableSet("MetkaSignal_Dir", isStrong ? -2 : -1);
-         }
       }
    }
 
@@ -2585,16 +2581,25 @@ int OnCalculate(const int rates_total,
    StrongBuyBuf[rates_total - 1]  = EMPTY_VALUE;
    StrongSellBuf[rates_total - 1] = EMPTY_VALUE;
 
-   //--- if no arrow on last bar but GlobalVariable has its time → filters removed it → reset
-   if(GlobalVariableCheck("MetkaSignal_Time"))
+   //--- AUTHORITATIVE GlobalVar sync: signal is valid ONLY if visible arrow on barLimit.
+   //    EA reads these vars; we MUST reset to 0 if filters removed the arrow,
+   //    otherwise stale signals from previous bars/runs will trigger trades.
    {
-      datetime sigT = (datetime)GlobalVariableGet("MetkaSignal_Time");
-      if(sigT == time[barLimit])
+      int sigDir = 0;
+      if(StrongBuyBuf[barLimit]  != EMPTY_VALUE) sigDir = 2;
+      else if(BuyBuf[barLimit]   != EMPTY_VALUE) sigDir = 1;
+      else if(StrongSellBuf[barLimit] != EMPTY_VALUE) sigDir = -2;
+      else if(SellBuf[barLimit]       != EMPTY_VALUE) sigDir = -1;
+
+      if(sigDir != 0)
       {
-         bool hasArrow = (BuyBuf[barLimit] != EMPTY_VALUE || SellBuf[barLimit] != EMPTY_VALUE ||
-                          StrongBuyBuf[barLimit] != EMPTY_VALUE || StrongSellBuf[barLimit] != EMPTY_VALUE);
-         if(!hasArrow)
-            GlobalVariableSet("MetkaSignal_Time", 0);
+         GlobalVariableSet("MetkaSignal_Time", (double)time[barLimit]);
+         GlobalVariableSet("MetkaSignal_Dir",  (double)sigDir);
+      }
+      else
+      {
+         GlobalVariableSet("MetkaSignal_Time", 0);
+         GlobalVariableSet("MetkaSignal_Dir",  0);
       }
    }
 
