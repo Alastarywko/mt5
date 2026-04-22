@@ -2591,10 +2591,13 @@ int OnCalculate(const int rates_total,
       else if(StrongSellBuf[barLimit] != EMPTY_VALUE) sigDir = -2;
       else if(SellBuf[barLimit]       != EMPTY_VALUE) sigDir = -1;
 
+      // CRITICAL: set Dir BEFORE Time. EA reads Time first; if Time is new
+      // value, Dir is guaranteed new too. Avoids race where EA sees new Time
+      // with stale Dir=0 → would treat as no signal and burn lastSignalTime.
       if(sigDir != 0)
       {
-         GlobalVariableSet("MetkaSignal_Time", (double)time[barLimit]);
          GlobalVariableSet("MetkaSignal_Dir",  (double)sigDir);
+         GlobalVariableSet("MetkaSignal_Time", (double)time[barLimit]);
       }
       else
       {

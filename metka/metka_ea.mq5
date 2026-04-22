@@ -165,11 +165,10 @@ void OnTick()
    datetime sigTime = (datetime)GlobalVariableGet("MetkaSignal_Time");
    int      sigDir  = (int)GlobalVariableGet("MetkaSignal_Dir");
 
-   if(sigTime <= lastSignalTime)
-      return;
    if(sigTime == 0)
       return;
-
+   if(sigTime <= lastSignalTime)
+      return;
 
    // sigDir: 1=buy, 2=strong buy, -1=sell, -2=strong sell
    bool isBuy       = (sigDir == 1);
@@ -177,12 +176,23 @@ void OnTick()
    bool isSell       = (sigDir == -1);
    bool isStrongSell = (sigDir == -2);
 
+   // RACE GUARD: if Time looks new but Dir is 0/invalid, indicator is mid-write.
+   // Do NOT update lastSignalTime; just wait for next tick when both are coherent.
+   if(sigDir == 0 || (!isBuy && !isStrongBuy && !isSell && !isStrongSell))
+   {
+      PrintFormat("metka_ea: race detected sigTime=%s dir=%d - waiting next tick",
+                  TimeToString(sigTime), sigDir);
+      return;
+   }
+
    // determine if signal passes strong filter
    bool sigIsBuy  = isBuy || (isStrongBuy  && InpTradeStrongBuy);
    bool sigIsSell = isSell || (isStrongSell && InpTradeStrongSell);
 
    if(!sigIsBuy && !sigIsSell)
    {
+      PrintFormat("metka_ea: SKIP (strong filter) sigTime=%s dir=%d StrongBuy=%d StrongSell=%d",
+                  TimeToString(sigTime), sigDir, InpTradeStrongBuy, InpTradeStrongSell);
       lastSignalTime = sigTime;
       GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
       return;
@@ -206,6 +216,9 @@ void OnTick()
 
    if(!doOpenBuy && !doOpenSell)
    {
+      PrintFormat("metka_ea: SKIP (trade flags) sigTime=%s dir=%d TradeBuy=%d TradeSell=%d DirectBuy=%d DirectSell=%d",
+                  TimeToString(sigTime), sigDir,
+                  InpTradeBuy, InpTradeSell, InpDirectBuy, InpDirectSell);
       lastSignalTime = sigTime;
       GlobalVariableSet("MetkaEA_LastSigTime", (double)lastSignalTime);
       return;
