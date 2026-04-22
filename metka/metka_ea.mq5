@@ -90,7 +90,12 @@ datetime FindLastExistingSignalTime()
          sbuy[0] != EMPTY_VALUE || ssell[0] != EMPTY_VALUE)
          return iTime(_Symbol, _Period, s);
    }
-   return TimeCurrent();
+   // no existing arrow: return time of last closed bar (NOT TimeCurrent),
+   // so a fresh arrow forming on the next bar close is NOT skipped due to
+   // attach happening mid-bar.
+   datetime t1 = iTime(_Symbol, _Period, 1);
+   if(t1 > 0) return t1;
+   return 0;
 }
 
 //+------------------------------------------------------------------+
