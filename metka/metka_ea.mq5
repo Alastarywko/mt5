@@ -47,12 +47,19 @@ input bool   InpTrailing      = false;  // Трейлінг стоп: вкл/в�
 input int    InpTrailActivate = 100;    // Трейлінг: активація (пунктів прибутку)
 input int    InpTrailStep     = 10;     // Трейлінг: розмір (пунктів)
 
+//═══════════════════════════════════════════════════════════════
+// МАРТИНГЕЙЛ
+//═══════════════════════════════════════════════════════════════
+input bool   InpMartingale    = false;  // Мартингейл: вкл/викл
+input double InpMartingaleMax = 0;      // Мартингейл: макс лот (0 = без обмежень)
+
 CTrade   trade;
 int      hIndicator;
 datetime lastSignalTime;
 int      g_counterDir    = 0;    // pending counter: 1=buy, -1=sell
 double   g_counterEntry  = 0;    // entry price of main position
 bool     g_counterPlaced = false;
+double   g_currentLot    = 1.0;  // поточний лот (змінюється мартингейлом)
 
 //+------------------------------------------------------------------+
 int FindChartIndicator()
@@ -117,6 +124,17 @@ int OnInit()
    lastSignalTime = MathMax(savedTime, foundTime);
    Print("metka_ea: skip existing signals before ", lastSignalTime,
          " (saved=", savedTime, " found=", foundTime, ")");
+
+   // Мартингейл: відновлюємо поточний лот після перезапуску
+   if(InpMartingale && GlobalVariableCheck("MetkaEA_MartLot"))
+   {
+      g_currentLot = GlobalVariableGet("MetkaEA_MartLot");
+      if(g_currentLot < InpLotSize) g_currentLot = InpLotSize;
+      PrintFormat("metka_ea: Martingale RESTORED lot=%.2f", g_currentLot);
+   }
+   else
+      g_currentLot = InpLotSize;
+
    return(INIT_SUCCEEDED);
 }
 
@@ -268,6 +286,7 @@ void OnTick()
 void OpenBuy()
 {
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double lot = InpMartingale ? g_currentLot : InpLotSize;
 
    if(InpPending)
    {
@@ -275,20 +294,20 @@ void OpenBuy()
       double sl = InpSL > 0 ? NormalizeDouble(price - InpSL * _Point, _Digits) : 0;
       double tp = InpTP > 0 ? NormalizeDouble(price + InpTP * _Point, _Digits) : 0;
 
-      if(!trade.BuyLimit(InpLotSize, price, _Symbol, sl, tp, 0, 0, "Metka BUY Limit"))
+      if(!trade.BuyLimit(lot, price, _Symbol, sl, tp, 0, 0, "Metka BUY Limit"))
          PrintFormat("BUY LIMIT FAIL: %d %s", trade.ResultRetcode(), trade.ResultComment());
       else
-         PrintFormat("metka_ea: BUY LIMIT @ %.2f SL=%.2f TP=%.2f", price, sl, tp);
+         PrintFormat("metka_ea: BUY LIMIT @ %.2f SL=%.2f TP=%.2f lot=%.2f", price, sl, tp, lot);
    }
    else
    {
       double sl = InpSL > 0 ? NormalizeDouble(ask - InpSL * _Point, _Digits) : 0;
       double tp = InpTP > 0 ? NormalizeDouble(ask + InpTP * _Point, _Digits) : 0;
 
-      if(!trade.Buy(InpLotSize, _Symbol, ask, sl, tp, "Metka BUY"))
+      if(!trade.Buy(lot, _Symbol, ask, sl, tp, "Metka BUY"))
          PrintFormat("BUY FAIL: %d %s", trade.ResultRetcode(), trade.ResultComment());
       else
-         PrintFormat("metka_ea: BUY @ %.2f SL=%.2f TP=%.2f", ask, sl, tp);
+         PrintFormat("metka_ea: BUY @ %.2f SL=%.2f TP=%.2f lot=%.2f", ask, sl, tp, lot);
    }
 }
 
@@ -296,6 +315,7 @@ void OpenBuy()
 void OpenSell()
 {
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double lot = InpMartingale ? g_currentLot : InpLotSize;
 
    if(InpPending)
    {
@@ -303,20 +323,20 @@ void OpenSell()
       double sl = InpSL > 0 ? NormalizeDouble(price + InpSL * _Point, _Digits) : 0;
       double tp = InpTP > 0 ? NormalizeDouble(price - InpTP * _Point, _Digits) : 0;
 
-      if(!trade.SellLimit(InpLotSize, price, _Symbol, sl, tp, 0, 0, "Metka SELL Limit"))
+      if(!trade.SellLimit(lot, price, _Symbol, sl, tp, 0, 0, "Metka SELL Limit"))
          PrintFormat("SELL LIMIT FAIL: %d %s", trade.ResultRetcode(), trade.ResultComment());
       else
-         PrintFormat("metka_ea: SELL LIMIT @ %.2f SL=%.2f TP=%.2f", price, sl, tp);
+         PrintFormat("metka_ea: SELL LIMIT @ %.2f SL=%.2f TP=%.2f lot=%.2f", price, sl, tp, lot);
    }
    else
    {
       double sl = InpSL > 0 ? NormalizeDouble(bid + InpSL * _Point, _Digits) : 0;
       double tp = InpTP > 0 ? NormalizeDouble(bid - InpTP * _Point, _Digits) : 0;
 
-      if(!trade.Sell(InpLotSize, _Symbol, bid, sl, tp, "Metka SELL"))
+      if(!trade.Sell(lot, _Symbol, bid, sl, tp, "Metka SELL"))
          PrintFormat("SELL FAIL: %d %s", trade.ResultRetcode(), trade.ResultComment());
       else
-         PrintFormat("metka_ea: SELL @ %.2f SL=%.2f TP=%.2f", bid, sl, tp);
+         PrintFormat("metka_ea: SELL @ %.2f SL=%.2f TP=%.2f lot=%.2f", bid, sl, tp, lot);
    }
 }
 
@@ -412,6 +432,51 @@ void DeletePendingOrders()
       if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
       if(OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
       trade.OrderDelete(ticket);
+   }
+}
+
+//+------------------------------------------------------------------+
+// МАРТИНГЕЙЛ: відстежуємо результат кожної закритої позиції
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest     &request,
+                        const MqlTradeResult      &result)
+{
+   if(!InpMartingale) return;
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+
+   if(!HistoryDealSelect(trans.deal)) return;
+   if(HistoryDealGetInteger(trans.deal, DEAL_MAGIC)  != (long)InpMagic) return;
+   if(HistoryDealGetString(trans.deal, DEAL_SYMBOL)  != _Symbol) return;
+
+   ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+   if(dealEntry != DEAL_ENTRY_OUT && dealEntry != DEAL_ENTRY_INOUT) return;
+
+   double profit = HistoryDealGetDouble(trans.deal, DEAL_PROFIT)
+                 + HistoryDealGetDouble(trans.deal, DEAL_SWAP)
+                 + HistoryDealGetDouble(trans.deal, DEAL_COMMISSION);
+
+   if(profit >= 0)
+   {
+      // TP спрацював або закрили в плюс → скидаємо на початковий лот
+      g_currentLot = InpLotSize;
+      GlobalVariableSet("MetkaEA_MartLot", g_currentLot);
+      PrintFormat("metka_ea: Martingale RESET → lot=%.2f (profit=%.2f)", g_currentLot, profit);
+   }
+   else
+   {
+      // SL спрацював → подвоюємо лот
+      double newLot = NormalizeDouble(g_currentLot * 2.0, 2);
+      if(InpMartingaleMax > 0 && newLot > InpMartingaleMax)
+      {
+         newLot = InpMartingaleMax;
+         PrintFormat("metka_ea: Martingale CAP reached → lot=%.2f (loss=%.2f)", newLot, profit);
+      }
+      else
+         PrintFormat("metka_ea: Martingale DOUBLE → lot=%.2f (loss=%.2f)", newLot, profit);
+
+      g_currentLot = newLot;
+      GlobalVariableSet("MetkaEA_MartLot", g_currentLot);
    }
 }
 //+------------------------------------------------------------------+
